@@ -1,0 +1,33 @@
+VEQRI PROPRIETARY LICENSE
+
+Copyright (c) 2026 Vladislav Tomilov. All rights reserved.
+
+1. Ownership
+The Veqri repository, its source code, documentation, designs, assets, and all other materials (collectively, the "Materials") are proprietary and remain the exclusive property of Vladislav Tomilov and applicable contributors.
+
+2. Limited permission to evaluate and contribute
+You may view the Materials and make only the temporary, private copies strictly necessary to evaluate the project and prepare a proposed contribution through a GitHub pull request. This permission does not permit any other use.
+
+3. Restrictions
+Except for the narrow permission in section 2, you may not, without prior written permission from Vladislav Tomilov:
+
+- use, run, or deploy the Materials for any personal, commercial, research, educational, or production purpose;
+- copy, modify, adapt, translate, reverse engineer, create derivative works from, distribute, publish, sublicense, sell, rent, lend, or otherwise make the Materials available to any third party;
+- use the Materials to create or assist a competing product or service; or
+- remove or alter copyright, proprietary, or attribution notices.
+
+No patent, trademark, copyright, trade secret, or other intellectual-property license is granted by implication, estoppel, or otherwise.
+
+4. Contributions
+Submitting a pull request or other contribution is subject to CONTRIBUTING.md. By submitting one, you represent that you have the right to do so and grant Vladislav Tomilov a perpetual, irrevocable, worldwide, royalty-free, transferable, sublicensable, non-exclusive license to use, copy, modify, distribute, commercialize, and relicense your contribution as part of Veqri or any related product.
+
+5. Termination
+The limited permission in section 2 ends automatically if you breach this license. Upon termination, you must stop all use of and delete all copies of the Materials in your possession or control, except where retention is required by law.
+
+6. No warranty and limitation of liability
+THE MATERIALS ARE PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTIES OF ANY KIND. TO THE MAXIMUM EXTENT PERMITTED BY LAW, VLADISLAV TOMILOV SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM OR RELATED TO THE MATERIALS OR THIS LICENSE.
+
+7. Enforcement
+Unauthorized use may violate copyright, trade-secret, contract, and other applicable laws. Vladislav Tomilov reserves all rights and remedies.
+
+For licensing requests, contact the repository owner through GitHub.
