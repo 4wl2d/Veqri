@@ -147,5 +147,5 @@ jobs:
           java-version: '21'
           cache: gradle
       - uses: android-actions/setup-android@v3
-      - run: sdkmanager 'platforms;android-37' 'build-tools;37.0.0'
+      - run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0'
       - run: ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug assembleRelease assembleDebugAndroidTest
