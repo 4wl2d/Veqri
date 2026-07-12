@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package veqri.v1;
+
+option go_package = "github.com/veqri/veqri/protocol/generated/go/veqri/v1;veqriv1";
+option java_multiple_files = true;
+option java_package = "ai.veqri.protocol.v1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+message ProtocolVersion {
+  uint32 major = 1;
+  uint32 minor = 2;
+  repeated string capabilities = 3;
+}
+
+message Correlation {
+  string correlation_id = 1;
+  optional string causation_id = 2;
+  string idempotency_key = 3;
+}
+
+message Actor {
+  string id = 1;
+  string display_name = 2;
+}
+
+message Source {
+  string kind = 1;
+  string connector_id = 2;
+  string instance_id = 3;
+}
+
+message ReplyTarget {
+  string connector_id = 1;
+  string channel_id = 2;
+  string thread_id = 3;
+}
+
+enum TrustLevel {
+  TRUST_LEVEL_UNSPECIFIED = 0;
+  TRUST_LEVEL_UNTRUSTED = 1;
+  TRUST_LEVEL_KNOWN = 2;
+  TRUST_LEVEL_TRUSTED = 3;
+  TRUST_LEVEL_LOCAL = 4;
+}
+
+message ErrorDetail {
+  string code = 1;
+  string message = 2;
+  bool retryable = 3;
+  google.protobuf.Struct metadata = 4;
+}
+
+message Artifact {
+  string id = 1;
+  string name = 2;
+  string media_type = 3;
+  string uri = 4;
+  string sha256 = 5;
+  int64 size_bytes = 6;
+  string description = 7;
+  google.protobuf.Timestamp created_at = 8;
+}

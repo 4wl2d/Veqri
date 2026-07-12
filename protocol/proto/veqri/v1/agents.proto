@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package veqri.v1;
+
+option go_package = "github.com/veqri/veqri/protocol/generated/go/veqri/v1;veqriv1";
+option java_multiple_files = true;
+option java_package = "ai.veqri.protocol.v1";
+
+import "google/protobuf/struct.proto";
+
+message AgentDefinition {
+  string id = 1;
+  string display_name = 2;
+  string description = 3;
+  repeated string capabilities = 4;
+  repeated string accepted_task_types = 5;
+  google.protobuf.Struct input_schema = 6;
+  google.protobuf.Struct output_schema = 7;
+  repeated string tool_scopes = 8;
+  string trust_level = 9;
+  google.protobuf.Struct cost_metadata = 10;
+  google.protobuf.Struct latency_metadata = 11;
+  uint32 concurrency_limit = 12;
+  string health = 13;
+  string execution_mode = 14;
+  bool supports_cancellation = 15;
+  bool supports_streaming = 16;
+}

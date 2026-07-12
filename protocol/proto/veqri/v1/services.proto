@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package veqri.v1;
+
+option go_package = "github.com/veqri/veqri/protocol/generated/go/veqri/v1;veqriv1";
+option java_multiple_files = true;
+option java_package = "ai.veqri.protocol.v1";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+import "veqri/v1/common.proto";
+import "veqri/v1/events.proto";
+import "veqri/v1/tasks.proto";
+import "veqri/v1/tools.proto";
+import "veqri/v1/voice.proto";
+
+message NegotiateRequest { ProtocolVersion client = 1; }
+message NegotiateResponse { ProtocolVersion selected = 1; }
+message IngestEventRequest { EventEnvelope event = 1; }
+message IngestEventResponse { string event_id = 1; bool duplicate = 2; optional string task_id = 3; }
+message GetTaskRequest { string id = 1; }
+message ListTasksRequest { repeated TaskStatus status = 1; uint32 limit = 2; }
+message ListTasksResponse { repeated Task tasks = 1; }
+message CancelTaskRequest { string id = 1; string reason = 2; }
+message DecideApprovalRequest { string id = 1; bool approved = 2; }
+message StartCallRequest { string device_id = 1; optional string conversation_id = 2; }
+message EmitLocalEventRequest { EventEnvelope event = 1; }
+message GenericResponse { bool accepted = 1; string id = 2; optional ErrorDetail error = 3; }
+
+service VeqriCoreService {
+  rpc Negotiate(NegotiateRequest) returns (NegotiateResponse);
+  rpc IngestEvent(IngestEventRequest) returns (IngestEventResponse);
+  rpc GetTask(GetTaskRequest) returns (Task);
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+  rpc CancelTask(CancelTaskRequest) returns (Task);
+  rpc DecideApproval(DecideApprovalRequest) returns (Approval);
+  rpc StartCall(StartCallRequest) returns (VoiceSession);
+  rpc EmitLocalEvent(EmitLocalEventRequest) returns (GenericResponse);
+  rpc StreamEvents(google.protobuf.Empty) returns (stream StreamEvent);
+  rpc DesktopSnapshot(google.protobuf.Empty) returns (google.protobuf.Struct);
+}

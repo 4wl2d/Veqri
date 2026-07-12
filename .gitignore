@@ -1,0 +1,17 @@
+.DS_Store
+.env
+.veqri-dev/
+.veqri/
+*.db
+*.db-shm
+*.db-wal
+*.log
+coverage.out
+dist/
+build/
+.gradle/
+.idea/
+local.properties
+node_modules/
+apps/android/app/release/
+protocol/generated/kotlin/

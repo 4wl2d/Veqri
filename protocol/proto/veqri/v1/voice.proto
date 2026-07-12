@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package veqri.v1;
+
+option go_package = "github.com/veqri/veqri/protocol/generated/go/veqri/v1;veqriv1";
+option java_multiple_files = true;
+option java_package = "ai.veqri.protocol.v1";
+
+import "google/protobuf/timestamp.proto";
+
+enum DialogState {
+  DIALOG_STATE_UNSPECIFIED = 0;
+  DIALOG_STATE_IDLE = 1;
+  DIALOG_STATE_RINGING = 2;
+  DIALOG_STATE_CONNECTING = 3;
+  DIALOG_STATE_LISTENING = 4;
+  DIALOG_STATE_TRANSCRIBING = 5;
+  DIALOG_STATE_THINKING = 6;
+  DIALOG_STATE_DELEGATING = 7;
+  DIALOG_STATE_WAITING_FOR_RESULT = 8;
+  DIALOG_STATE_SPEAKING = 9;
+  DIALOG_STATE_INTERRUPTED = 10;
+  DIALOG_STATE_WAITING_FOR_APPROVAL = 11;
+  DIALOG_STATE_RECONNECTING = 12;
+  DIALOG_STATE_FAILED = 13;
+  DIALOG_STATE_ENDED = 14;
+}
+
+message VoiceSession {
+  string id = 1;
+  string conversation_id = 2;
+  string device_id = 3;
+  DialogState state = 4;
+  string transport = 5;
+  bool interrupted = 6;
+  google.protobuf.Timestamp started_at = 7;
+  optional google.protobuf.Timestamp ended_at = 8;
+  string correlation_id = 9;
+}
+
+message TranscriptUpdate {
+  string voice_session_id = 1;
+  string turn_id = 2;
+  string text = 3;
+  bool final = 4;
+  uint64 sequence = 5;
+}
+
+message VoiceControl {
+  string voice_session_id = 1;
+  oneof action {
+    bool answer = 2;
+    bool decline = 3;
+    bool interrupt = 4;
+    bool end = 5;
+    bool ping = 6;
+  }
+}

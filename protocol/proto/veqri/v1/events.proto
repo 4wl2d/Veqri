@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package veqri.v1;
+
+option go_package = "github.com/veqri/veqri/protocol/generated/go/veqri/v1;veqriv1";
+option java_multiple_files = true;
+option java_package = "ai.veqri.protocol.v1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "veqri/v1/common.proto";
+
+message EventEnvelope {
+  string id = 1;
+  string type = 2;
+  uint32 version = 3;
+  Source source = 4;
+  Actor actor = 5;
+  google.protobuf.Timestamp occurred_at = 6;
+  google.protobuf.Timestamp received_at = 7;
+  string conversation_key = 8;
+  Correlation correlation = 9;
+  TrustLevel trust_level = 10;
+  ReplyTarget reply_target = 11;
+  google.protobuf.Struct payload = 12;
+}
+
+message StreamEvent {
+  string id = 1;
+  string type = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+  Correlation correlation = 4;
+  optional string conversation_id = 5;
+  optional string task_id = 6;
+  google.protobuf.Struct payload = 7;
+}

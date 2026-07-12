@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package veqri.v1;
+
+option go_package = "github.com/veqri/veqri/protocol/generated/go/veqri/v1;veqriv1";
+option java_multiple_files = true;
+option java_package = "ai.veqri.protocol.v1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "veqri/v1/common.proto";
+
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_CREATED = 1;
+  TASK_STATUS_QUEUED = 2;
+  TASK_STATUS_ASSIGNED = 3;
+  TASK_STATUS_RUNNING = 4;
+  TASK_STATUS_WAITING_FOR_CHILDREN = 5;
+  TASK_STATUS_WAITING_FOR_APPROVAL = 6;
+  TASK_STATUS_BLOCKED = 7;
+  TASK_STATUS_COMPLETED = 8;
+  TASK_STATUS_PARTIALLY_COMPLETED = 9;
+  TASK_STATUS_FAILED = 10;
+  TASK_STATUS_CANCEL_REQUESTED = 11;
+  TASK_STATUS_CANCELLED = 12;
+  TASK_STATUS_TIMED_OUT = 13;
+}
+
+message Task {
+  string id = 1;
+  optional string parent_task_id = 2;
+  string root_task_id = 3;
+  optional string conversation_id = 4;
+  string goal = 5;
+  string task_type = 6;
+  google.protobuf.Struct input = 7;
+  string assigned_agent_id = 8;
+  repeated string allowed_tools = 9;
+  string approval_policy = 10;
+  TaskStatus status = 11;
+  uint32 progress = 12;
+  string progress_message = 13;
+  google.protobuf.Timestamp created_at = 14;
+  optional google.protobuf.Timestamp started_at = 15;
+  optional google.protobuf.Timestamp finished_at = 16;
+  uint32 retry_count = 17;
+  uint32 max_retries = 18;
+  uint32 timeout_seconds = 19;
+  optional ErrorDetail error = 20;
+  google.protobuf.Struct result = 21;
+  string user_facing_summary = 22;
+  repeated Artifact artifacts = 23;
+  Correlation correlation = 24;
+  int64 version = 25;
+  int32 priority = 26;
+  bool dismissed = 27;
+}
+
+message TaskDependency {
+  string task_id = 1;
+  string depends_on_task_id = 2;
+}
+
+message TaskGraph {
+  string root_task_id = 1;
+  repeated Task tasks = 2;
+  repeated TaskDependency dependencies = 3;
+}

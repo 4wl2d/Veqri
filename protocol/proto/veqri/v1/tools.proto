@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package veqri.v1;
+
+option go_package = "github.com/veqri/veqri/protocol/generated/go/veqri/v1;veqriv1";
+option java_multiple_files = true;
+option java_package = "ai.veqri.protocol.v1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+enum RiskLevel {
+  RISK_LEVEL_UNSPECIFIED = 0;
+  RISK_LEVEL_READ_ONLY = 1;
+  RISK_LEVEL_LOW = 2;
+  RISK_LEVEL_STATE_CHANGING = 3;
+  RISK_LEVEL_DESTRUCTIVE = 4;
+  RISK_LEVEL_PRIVILEGED = 5;
+  RISK_LEVEL_EXTERNAL_COMMUNICATION = 6;
+  RISK_LEVEL_SECRET_ACCESS = 7;
+}
+
+enum PolicyDecision {
+  POLICY_DECISION_UNSPECIFIED = 0;
+  POLICY_DECISION_ALLOW = 1;
+  POLICY_DECISION_ALLOW_WITH_REDACTION = 2;
+  POLICY_DECISION_REQUIRE_APPROVAL = 3;
+  POLICY_DECISION_DENY = 4;
+}
+
+message ToolDefinition {
+  string name = 1;
+  string description = 2;
+  google.protobuf.Struct input_schema = 3;
+  google.protobuf.Struct output_schema = 4;
+  repeated string required_permission_scopes = 5;
+  RiskLevel risk = 6;
+  bool approval_required = 7;
+  uint32 timeout_seconds = 8;
+  bool supports_cancellation = 9;
+  bool supports_streaming = 10;
+  repeated string supported_operating_systems = 11;
+}
+
+message ToolInvocation {
+  string id = 1;
+  string task_id = 2;
+  string tool_name = 3;
+  google.protobuf.Struct input = 4;
+  RiskLevel risk = 5;
+  string status = 6;
+  optional google.protobuf.Timestamp started_at = 7;
+  optional google.protobuf.Timestamp finished_at = 8;
+  optional int32 exit_code = 9;
+  google.protobuf.Struct output = 10;
+  string error = 11;
+  string correlation_id = 12;
+  string idempotency_key = 13;
+}
+
+message Approval {
+  string id = 1;
+  string task_id = 2;
+  string tool_name = 3;
+  google.protobuf.Struct tool_arguments = 4;
+  repeated string requested_scopes = 5;
+  RiskLevel risk = 6;
+  string reason = 7;
+  string status = 8;
+  google.protobuf.Timestamp requested_at = 9;
+  google.protobuf.Timestamp expires_at = 10;
+  optional google.protobuf.Timestamp decided_at = 11;
+  string decided_by = 12;
+  optional google.protobuf.Timestamp consumed_at = 13;
+  string correlation_id = 14;
+}
