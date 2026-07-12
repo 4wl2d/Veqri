@@ -1,0 +1,151 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.5'
+          cache: true
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: go build ./cmd/veqri-core ./cmd/veqri-cli
+
+  desktop:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.17.0'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test -- --run
+      - run: npm run build
+
+  native-release:
+    name: native release (${{ matrix.artifact }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: linux-x64
+            runner: ubuntu-24.04
+            executable_suffix: ''
+            desktop_entry: veqri-desktop
+            webkit_version: '4.1'
+            service_asset: deploy/systemd/veqri-core.service
+          - artifact: macos-arm64
+            runner: macos-15
+            executable_suffix: ''
+            desktop_entry: Veqri.app
+            webkit_version: auto
+            service_asset: deploy/launchd/ai.veqri.core.plist
+          - artifact: macos-x64
+            runner: macos-15-intel
+            executable_suffix: ''
+            desktop_entry: Veqri.app
+            webkit_version: auto
+            service_asset: deploy/launchd/ai.veqri.core.plist
+          - artifact: windows-x64
+            runner: windows-2025
+            executable_suffix: .exe
+            desktop_entry: veqri-desktop.exe
+            webkit_version: auto
+            service_asset: deploy/windows
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.5'
+          cache: true
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.17.0'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Install Linux WebView dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Test native bridge on Linux
+        if: runner.os == 'Linux'
+        working-directory: apps/desktop/native
+        run: go test -tags webkit2_41 ./...
+      - name: Test native bridge
+        if: runner.os != 'Linux'
+        working-directory: apps/desktop/native
+        run: go test ./...
+      - name: Build native desktop companion
+        working-directory: apps/desktop
+        env:
+          VEQRI_WEBKIT2GTK_VERSION: ${{ matrix.webkit_version }}
+        run: npm run native:build
+      - name: Build Core and CLI
+        run: |
+          go build -trimpath -o build/bin/veqri-core${{ matrix.executable_suffix }} ./cmd/veqri-core
+          go build -trimpath -o build/bin/veqri${{ matrix.executable_suffix }} ./cmd/veqri-cli
+      - name: Smoke-test packaged runtime
+        run: go run ./scripts/release-smoke.go --core build/bin/veqri-core${{ matrix.executable_suffix }} --cli build/bin/veqri${{ matrix.executable_suffix }}
+      - name: Package Unix executables
+        if: runner.os != 'Windows'
+        env:
+          ARTIFACT_NAME: ${{ matrix.artifact }}
+          DESKTOP_ENTRY: ${{ matrix.desktop_entry }}
+        run: tar -czf "build/veqri-${ARTIFACT_NAME}.tar.gz" -C build/bin veqri veqri-core "${DESKTOP_ENTRY}"
+      - name: Package Windows executables
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ARTIFACT_NAME: ${{ matrix.artifact }}
+          DESKTOP_ENTRY: ${{ matrix.desktop_entry }}
+        run: |
+          $entries = @(
+            "build/bin/veqri.exe",
+            "build/bin/veqri-core.exe",
+            "build/bin/$env:DESKTOP_ENTRY"
+          )
+          Compress-Archive -Path $entries -DestinationPath "build/veqri-$env:ARTIFACT_NAME.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: veqri-${{ matrix.artifact }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            build/veqri-${{ matrix.artifact }}.*
+            ${{ matrix.service_asset }}
+            docs/DEPLOYMENT.md
+
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-37' 'build-tools;37.0.0'
+      - run: ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug assembleRelease assembleDebugAndroidTest

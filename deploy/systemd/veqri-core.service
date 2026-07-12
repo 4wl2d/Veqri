@@ -1,0 +1,23 @@
+[Unit]
+Description=Veqri local-first personal assistant core
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/veqri-core
+WorkingDirectory=%h/.local/share/veqri/workspaces/default
+Environment=VEQRI_ADDR=127.0.0.1:7342
+Environment=VEQRI_DATA_DIR=%h/.local/share/veqri
+Environment=VEQRI_DATABASE=%h/.local/share/veqri/veqri.db
+Environment=VEQRI_WORKSPACES=%h/.local/share/veqri/workspaces/default
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/veqri
+
+[Install]
+WantedBy=default.target

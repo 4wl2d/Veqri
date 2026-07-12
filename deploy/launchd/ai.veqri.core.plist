@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>ai.veqri.core</string>
+  <key>ProgramArguments</key>
+  <array><string>__VEQRI_CORE_PATH__</string></array>
+  <key>WorkingDirectory</key><string>__VEQRI_WORKSPACE__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>VEQRI_ADDR</key><string>127.0.0.1:7342</string>
+    <key>VEQRI_DATA_DIR</key><string>__VEQRI_DATA_DIR__</string>
+    <key>VEQRI_DATABASE</key><string>__VEQRI_DATA_DIR__/veqri.db</string>
+    <key>VEQRI_WORKSPACES</key><string>__VEQRI_WORKSPACE__</string>
+  </dict>
+  <key>Umask</key><integer>63</integer>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>StandardOutPath</key><string>__VEQRI_DATA_DIR__/core.stdout.log</string>
+  <key>StandardErrorPath</key><string>__VEQRI_DATA_DIR__/core.stderr.log</string>
+</dict>
+</plist>
