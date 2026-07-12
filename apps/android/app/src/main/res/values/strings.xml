@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Veqri</string>
+    <string name="call_channel_name">Veqri calls</string>
+    <string name="event_channel_name">Veqri activity</string>
+</resources>
