@@ -59,6 +59,7 @@ func (s *Server) handleDesktopSnapshot(writer http.ResponseWriter, request *http
 
 func (s *Server) desktopSnapshot(ctx context.Context) (map[string]any, error) {
 	now := time.Now().UTC()
+	revision := s.nextDesktopRevision(now)
 	devices, err := s.store.ListDevices(ctx)
 	if err != nil {
 		return nil, err
@@ -241,7 +242,7 @@ func (s *Server) desktopSnapshot(ctx context.Context) (map[string]any, error) {
 		coreStatus = "degraded"
 	}
 	return map[string]any{
-		"protocol_version": 1, "revision": now.UnixMilli(), "generated_at": now,
+		"protocol_version": 1, "revision": revision, "generated_at": now,
 		"core": map[string]any{
 			"status": coreStatus, "version": "0.1.0", "protocol_version": 1,
 			"started_at": s.startedAt, "uptime_seconds": int64(time.Since(s.startedAt).Seconds()),
@@ -290,9 +291,10 @@ func (s *Server) handleDesktopAction(writer http.ResponseWriter, request *http.R
 		writeError(writer, persistenceStatus(actionErr), "desktop_action", actionErr.Error())
 		return
 	}
+	occurredAt := time.Now().UTC()
 	response := map[string]any{
-		"request_id": body.RequestID, "accepted": true, "occurred_at": time.Now().UTC(),
-		"revision": time.Now().UTC().UnixMilli(), "message": message, "artifact_path": artifactPath,
+		"request_id": body.RequestID, "accepted": true, "occurred_at": occurredAt,
+		"revision": s.nextDesktopRevision(occurredAt), "message": message, "artifact_path": artifactPath,
 	}
 	if err := s.store.CompleteDesktopAction(request.Context(), body.RequestID, response); err != nil {
 		writeError(writer, http.StatusInternalServerError, "desktop_action_result", "action completed but its response could not be recorded")
@@ -600,7 +602,8 @@ func (s *Server) handleDesktopWebSocket(writer http.ResponseWriter, request *htt
 }
 
 func (s *Server) writeDesktopEvent(ctx context.Context, connection *websocket.Conn, eventType, correlationID, entityID string) error {
-	revision := time.Now().UTC().UnixMilli()
+	now := time.Now().UTC()
+	revision := s.nextDesktopRevision(now)
 	var correlation any
 	if correlationID != "" {
 		correlation = correlationID
@@ -610,9 +613,24 @@ func (s *Server) writeDesktopEvent(ctx context.Context, connection *websocket.Co
 		data["entity_id"] = entityID
 	}
 	return writeWebSocketJSON(ctx, connection, map[string]any{
-		"id": ids.New(), "type": eventType, "occurred_at": time.Now().UTC(),
+		"id": ids.New(), "type": eventType, "occurred_at": now,
 		"correlation_id": correlation, "sequence": s.desktopSequence.Add(1), "data": data,
 	})
+}
+
+func (s *Server) nextDesktopRevision(now time.Time) int64 {
+	// Keep revisions wall-clock-shaped while imposing a process-local total
+	// order when the clock stalls, moves backwards, or callers race.
+	candidate := now.UTC().UnixMilli()
+	for {
+		previous := s.desktopRevision.Load()
+		if candidate <= previous {
+			candidate = previous + 1
+		}
+		if s.desktopRevision.CompareAndSwap(previous, candidate) {
+			return candidate
+		}
+	}
 }
 
 func desktopEventType(value string) string {

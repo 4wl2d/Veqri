@@ -120,7 +120,9 @@ Build debug with the real network adapter:
 ./gradlew :app:assembleDebug -PveqriFakeTransport=false
 ```
 
-Then install the APK and enter the Core URL plus a short-lived pairing code. Non-loopback endpoints must use HTTPS. Cleartext HTTP is accepted only for `localhost`, `127.0.0.1`, `::1`, and Android-emulator host alias `10.0.2.2`.
+The debug build defaults to the emulator host URL `http://10.0.2.2:7342`. The repository-level `go run ./cmd/veqri-build android` command finds a standard SDK installation, always selects this real transport, verifies the generated `BuildConfig`, and stages `build/release/Veqri-android-debug.apk`.
+
+Then install the APK and enter a short-lived pairing code. Non-loopback endpoints must use HTTPS. Cleartext HTTP is accepted only for development hosts allowed by the debug network policy, including `localhost` and Android-emulator host alias `10.0.2.2`.
 
 Expected pairing response:
 
@@ -190,7 +192,7 @@ Compose screens -> VeqriViewModel -> immutable render models
 
 ## Verification status
 
-As of 2026-07-12, JVM tests, debug lint, debug/release APK builds, and instrumentation APK compilation pass. `connectedDebugAndroidTest` also passed all three checked-in scenarios on an attached physical Android 15 target. Lint reports 0 errors; its remaining eight warnings are pinned toolchain/dependency update notices rather than source-indentation findings.
+As of 2026-07-12, all 41 JVM tests, debug lint, debug/release APK builds, and the four-test instrumentation APK compilation pass. The three instrumentation scenarios present during the last attached-device run passed on a physical Android 15 target; rerun `connectedDebugAndroidTest` for the current four-test suite when a device or emulator is available. Lint reports 0 errors; its remaining eight warnings are pinned toolchain/dependency update notices rather than source-indentation findings.
 
 ## Known integration work
 

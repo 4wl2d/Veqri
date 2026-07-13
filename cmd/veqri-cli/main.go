@@ -39,6 +39,10 @@ func run(arguments []string) error {
 		printUsage()
 		return errors.New("a command is required")
 	}
+	if arguments[0] == "help" || arguments[0] == "-h" || arguments[0] == "--help" {
+		printUsage()
+		return nil
+	}
 	cli, err := newClient()
 	if err != nil {
 		return err
@@ -73,6 +77,43 @@ func run(arguments []string) error {
 		printUsage()
 		return fmt.Errorf("unknown command %q", arguments[0])
 	}
+}
+
+type emitOptions struct {
+	eventType  string
+	dataPath   string
+	createTask bool
+}
+
+func parseEmitArguments(arguments []string) (emitOptions, error) {
+	flags := flag.NewFlagSet("emit", flag.ContinueOnError)
+	dataPath := flags.String("data", "", "JSON data file")
+	createTask := flags.Bool("task", false, "create a task from data.text or data.goal")
+
+	var eventType string
+	flagArguments := arguments
+	// The documented form is `emit EVENT_TYPE --data ... --task`. Go's flag
+	// package stops parsing at the first positional argument, so parse that
+	// leading event type separately while retaining the legacy flags-first form.
+	if len(arguments) > 0 && !strings.HasPrefix(arguments[0], "-") {
+		eventType = arguments[0]
+		flagArguments = arguments[1:]
+	}
+	if err := flags.Parse(flagArguments); err != nil {
+		return emitOptions{}, err
+	}
+	if eventType == "" {
+		if flags.NArg() != 1 {
+			return emitOptions{}, errors.New("usage: veqri emit EVENT_TYPE [--data file.json] [--task]")
+		}
+		eventType = flags.Arg(0)
+	} else if flags.NArg() != 0 {
+		return emitOptions{}, errors.New("usage: veqri emit EVENT_TYPE [--data file.json] [--task]")
+	}
+	if strings.TrimSpace(eventType) == "" {
+		return emitOptions{}, errors.New("event type cannot be empty")
+	}
+	return emitOptions{eventType: eventType, dataPath: *dataPath, createTask: *createTask}, nil
 }
 
 func newClient() (*client, error) {
@@ -150,18 +191,13 @@ func (c *client) ask(ctx context.Context, arguments []string) error {
 }
 
 func (c *client) emit(ctx context.Context, arguments []string) error {
-	flags := flag.NewFlagSet("emit", flag.ContinueOnError)
-	dataPath := flags.String("data", "", "JSON data file")
-	createTask := flags.Bool("task", false, "create a task from data.text or data.goal")
-	if err := flags.Parse(arguments); err != nil {
+	options, err := parseEmitArguments(arguments)
+	if err != nil {
 		return err
 	}
-	if flags.NArg() != 1 {
-		return errors.New("usage: veqri emit EVENT_TYPE [--data file.json] [--task]")
-	}
 	data := json.RawMessage(`{}`)
-	if *dataPath != "" {
-		raw, err := os.ReadFile(*dataPath)
+	if options.dataPath != "" {
+		raw, err := os.ReadFile(options.dataPath)
 		if err != nil {
 			return err
 		}
@@ -171,7 +207,7 @@ func (c *client) emit(ctx context.Context, arguments []string) error {
 		data = raw
 	}
 	return c.printRequest(ctx, http.MethodPost, "/v1/events", map[string]any{
-		"type": flags.Arg(0), "data": data, "create_task": *createTask,
+		"type": options.eventType, "data": data, "create_task": options.createTask,
 		"idempotency_key": fmt.Sprintf("cli-event:%d", time.Now().UTC().UnixNano()),
 	}, true)
 }
@@ -230,7 +266,7 @@ func (c *client) shell(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if flags.NArg() < 1 {
-		return errors.New("usage: veqri shell [--cwd PATH] [--dry-run] COMMAND [ARGS...]")
+		return errors.New("usage: veqri shell [--cwd PATH] [--dry-run] [--wait] COMMAND [ARGS...]")
 	}
 	var response struct {
 		Task struct {
@@ -353,8 +389,7 @@ func env(name, fallback string) string {
 	return fallback
 }
 
-func printUsage() {
-	fmt.Fprintln(os.Stderr, `Veqri CLI
+const usageText = `Veqri CLI
 
 Usage:
   veqri status
@@ -367,6 +402,9 @@ Usage:
   veqri deny APPROVAL_ID
   veqri pair
   veqri call DEVICE_NAME_OR_ID
-  veqri shell [--cwd PATH] [--dry-run] COMMAND [ARGS...]
-  veqri diagnostics`)
+  veqri shell [--cwd PATH] [--dry-run] [--wait] COMMAND [ARGS...]
+  veqri diagnostics`
+
+func printUsage() {
+	fmt.Fprintln(os.Stderr, usageText)
 }

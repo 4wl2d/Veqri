@@ -16,6 +16,16 @@ var configEnvironment = []string{
 	"VEQRI_MATTERMOST_TOKEN_REF", "VEQRI_REMOTE_AGENT_ENDPOINT",
 	"VEQRI_REMOTE_AGENT_TOKEN_REF", "VEQRI_REMOTE_AGENT_ID", "VEQRI_STDIO_AGENT_COMMAND",
 	"VEQRI_STDIO_AGENT_ARGS_JSON", "VEQRI_STDIO_AGENT_ID",
+	"VEQRI_MANAGED_CORE_OWNER_TOKEN",
+}
+
+func TestLoadValidatesManagedCoreOwnerToken(t *testing.T) {
+	clearConfigEnvironment(t)
+	t.Setenv("VEQRI_DATA_DIR", t.TempDir())
+	t.Setenv("VEQRI_MANAGED_CORE_OWNER_TOKEN", "too-short")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted a short managed Core owner token")
+	}
 }
 
 func clearConfigEnvironment(t *testing.T) {

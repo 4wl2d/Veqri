@@ -109,7 +109,8 @@ export function DesktopProvider({ gateway: injectedGateway, children }: DesktopP
       onEvent: (event) => {
         if (!active) return;
         setLastEventAt(event.occurred_at);
-		if (event.type === "heartbeat") return;
+        if (event.type === "heartbeat") return;
+        if (snapshotRef.current && event.data.revision < snapshotRef.current.revision) return;
         if (refreshTimer.current) clearTimeout(refreshTimer.current);
         refreshTimer.current = setTimeout(() => void refresh(), 60);
       },
@@ -121,6 +122,7 @@ export function DesktopProvider({ gateway: injectedGateway, children }: DesktopP
         if (!snapshotRef.current) {
           if (state === "retrying") setLoadState("retrying");
           if (state === "disconnected") setLoadState("disconnected");
+          if (state === "failed") setLoadState("failed");
         }
       },
       onError: (streamError) => {
@@ -138,10 +140,17 @@ export function DesktopProvider({ gateway: injectedGateway, children }: DesktopP
   useEffect(() => {
     if (!snapshot) return;
     const theme = snapshot.settings.theme;
-    const dark = theme === "dark" || (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
-    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    const colorScheme = matchMedia("(prefers-color-scheme: dark)");
+    const applyTheme = () => {
+      const dark = theme === "dark" || (theme === "system" && colorScheme.matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    };
+    applyTheme();
     const pendingCount = snapshot.approvals.filter((approval) => approval.status === "pending").length;
     void window.veqriShell?.setTrayBadge?.(pendingCount);
+    if (theme !== "system") return;
+    colorScheme.addEventListener("change", applyTheme);
+    return () => colorScheme.removeEventListener("change", applyTheme);
   }, [snapshot]);
 
   const runAction = useCallback(

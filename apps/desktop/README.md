@@ -60,14 +60,16 @@ cd apps/desktop
 npm run preview
 ```
 
-Build the native Wails companion, which embeds `apps/desktop/dist` and injects the local Core credential at runtime rather than compiling it into frontend assets:
+Build the native Wails application, which embeds `apps/desktop/dist`, contains a managed Core entry point in the same executable, and injects the local credential at runtime rather than compiling it into frontend assets:
 
 ```bash
 cd apps/desktop
 npm run native:build
 ```
 
-Platform outputs are `../../build/bin/Veqri.app` on macOS, `../../build/bin/veqri-desktop` on Linux, and `../../build/bin/veqri-desktop.exe` on Windows. The Node build driver uses the pinned Wails v2.12.0 CLI with production tags and structured subprocess arguments, so the same npm command works without POSIX shell utilities. Linux auto-detects WebKitGTK 4.1; set `VEQRI_WEBKIT2GTK_VERSION=4.0` or `4.1` only when an explicit distro override is required.
+Platform outputs are `../../build/bin/Veqri.app` on macOS, `../../build/bin/veqri-desktop` on Linux, and `../../build/bin/veqri-desktop.exe` on Windows. At startup the app reserves the configured loopback origin by starting the same executable in its private managed-Core mode, requires an ephemeral ownership nonce on `/healthz`, waits for `/readyz`, verifies the local credential through authenticated protocol negotiation, and stops that child through a cross-platform lifecycle pipe when the UI exits. An unexpected child exit closes the owning UI. Managed mode refuses to attach to an existing listener; set `VEQRI_DESKTOP_CORE_MODE=external` only when another trusted process manager owns Core.
+
+From the repository root, `go run ./cmd/veqri-build` also installs dependencies and stages the consistently named user artifact under `build/release`. The Node build driver uses the pinned Wails v2.12.0 CLI with production tags and structured subprocess arguments. Linux auto-detects WebKitGTK 4.1; set `VEQRI_WEBKIT2GTK_VERSION=4.0` or `4.1` only when an explicit distro override is required.
 
 ## Routes
 
@@ -124,7 +126,7 @@ The checked-in Wails bridge reads the local Core credential at runtime (environm
 | Dark/light/system theme and keyboard accessibility | Operational |
 | Rolling transcript/task/event/audit retention expiry | Operational in Core; read-only desktop status reflects `VEQRI_RETENTION_DAYS` (`0` disables automatic expiry) |
 | Login/tray lifecycle, OS notifications, quiet hours, and LAN configuration controls | Read-only and clearly marked unavailable until enforcement is implemented; configure Core/service startup outside the UI |
-| Native desktop shell and runtime credential bridge | Production-tag Wails build with host-native Linux/macOS/Windows CI gates; signing, installers, tray badge, OS notification, and file-reveal methods remain release work |
+| Native desktop shell, managed Core, and runtime credential bridge | One launchable host-native Wails artifact starts its owned Core (or uses explicit external mode) and has Linux/macOS/Windows CI gates; signing, installers, tray badge, OS notification, and file-reveal methods remain release work |
 | Orchestration, security policy, tool execution | Intentionally absent from UI; authoritative in Core |
 
 ## Verification status

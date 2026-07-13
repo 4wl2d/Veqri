@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/veqri/veqri/internal/managedcore"
 )
 
 type Config struct {
@@ -36,6 +38,7 @@ type Config struct {
 	STTProvider           string
 	TTSProvider           string
 	MediaTransport        string
+	ManagedCoreOwnerToken string
 	WorkerCount           int
 	ShutdownTimeout       time.Duration
 }
@@ -87,6 +90,7 @@ func Load() (Config, error) {
 		STTProvider:           env("VEQRI_STT_PROVIDER", "mock"),
 		TTSProvider:           env("VEQRI_TTS_PROVIDER", "mock"),
 		MediaTransport:        env("VEQRI_MEDIA_TRANSPORT", "simulated"),
+		ManagedCoreOwnerToken: os.Getenv(managedcore.OwnerTokenEnvironment),
 		WorkerCount:           workerCount,
 		ShutdownTimeout:       10 * time.Second,
 	}
@@ -102,6 +106,9 @@ func (c Config) Validate() error {
 	}
 	if c.WorkerCount < 1 || c.WorkerCount > 32 {
 		return errors.New("VEQRI_WORKERS must be between 1 and 32")
+	}
+	if c.ManagedCoreOwnerToken != "" && len(c.ManagedCoreOwnerToken) < 32 {
+		return fmt.Errorf("%s must contain at least 32 characters", managedcore.OwnerTokenEnvironment)
 	}
 	host, _, err := net.SplitHostPort(c.Address)
 	if err != nil {

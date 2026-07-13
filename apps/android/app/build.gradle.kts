@@ -18,7 +18,6 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
-        buildConfigField("String", "DEFAULT_CORE_URL", "\"https://10.0.2.2:8443\"")
         javaCompileOptions {
             annotationProcessorOptions {
                 arguments += mapOf("room.schemaLocation" to "$projectDir/schemas")
@@ -30,6 +29,7 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            buildConfigField("String", "DEFAULT_CORE_URL", "\"http://10.0.2.2:7342\"")
             buildConfigField("boolean", "USE_FAKE_TRANSPORT", useFakeTransportForDebug.get())
         }
         release {
@@ -39,6 +39,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            buildConfigField("String", "DEFAULT_CORE_URL", "\"https://10.0.2.2:8443\"")
             buildConfigField("boolean", "USE_FAKE_TRANSPORT", "false")
         }
     }

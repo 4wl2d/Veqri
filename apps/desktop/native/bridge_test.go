@@ -43,6 +43,8 @@ func TestValidateCoreURLRejectsNonLoopbackOriginsAndURLComponents(t *testing.T) 
 		{name: "path", raw: "http://localhost:7342/v1"},
 		{name: "query", raw: "http://localhost:7342?mode=live"},
 		{name: "fragment", raw: "http://localhost:7342#status"},
+		{name: "zero port", raw: "http://localhost:0"},
+		{name: "out of range port", raw: "http://localhost:65536"},
 	}
 
 	for _, test := range tests {

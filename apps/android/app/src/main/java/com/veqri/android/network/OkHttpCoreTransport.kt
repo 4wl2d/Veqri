@@ -736,7 +736,7 @@ internal fun parseEvent(json: JSONObject): CoreEvent {
             correlationId = correlationId,
             commandId = payload.getString("command_id"),
             commandType = payload.getString("command_type"),
-            committed = payload.getString("status") == "COMMITTED",
+            committed = commandResultCommitted(payload.getString("status")),
             safeMessage = payload.optionalString("safe_message")?.take(240),
         )
         "conversation.message_added" -> CoreEvent.MessageAdded(
@@ -842,7 +842,21 @@ private fun JSONObject.stringList(name: String): List<String> {
     }
 }
 
-internal fun boundTtsText(text: String): String = text.take(CoreTransport.MAX_TTS_TEXT_CHARS)
+internal fun boundTtsText(text: String): String {
+    if (text.length <= CoreTransport.MAX_TTS_TEXT_CHARS) return text
+    var end = CoreTransport.MAX_TTS_TEXT_CHARS
+    if (Character.isHighSurrogate(text[end - 1]) && Character.isLowSurrogate(text[end])) {
+        end--
+    }
+    return text.substring(0, end)
+}
+
+internal fun commandResultCommitted(status: String): Boolean = when (status) {
+    "COMMITTED" -> true
+    "REJECTED" -> false
+    // Anything else is an unknown outcome; parsing must fail so the commit waiter times out and reconnects.
+    else -> throw IllegalArgumentException("Unsupported command result status.")
+}
 
 private fun JSONObject.optionalString(name: String): String? =
     if (!has(name) || isNull(name)) null else getString(name).takeIf(String::isNotBlank)

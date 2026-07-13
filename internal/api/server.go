@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -25,6 +26,7 @@ import (
 	"github.com/veqri/veqri/core/voice"
 	"github.com/veqri/veqri/internal/auth"
 	"github.com/veqri/veqri/internal/config"
+	"github.com/veqri/veqri/internal/managedcore"
 	"github.com/veqri/veqri/internal/stream"
 	"github.com/veqri/veqri/tools/shell"
 )
@@ -52,6 +54,7 @@ type Server struct {
 	voiceSpeaking   map[string]bool
 	mediaSessions   map[string]voice.MediaSession
 	desktopSequence atomic.Uint64
+	desktopRevision atomic.Int64
 	deviceMu        sync.Mutex
 	deviceSockets   map[string]map[*websocket.Conn]struct{}
 }
@@ -331,6 +334,9 @@ func (s *Server) rateLimit(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleHealth(writer http.ResponseWriter, _ *http.Request) {
+	if s.config.ManagedCoreOwnerToken != "" {
+		writer.Header().Set(managedcore.OwnerTokenHeader, managedcore.OwnerProof(s.config.ManagedCoreOwnerToken))
+	}
 	writeJSON(writer, http.StatusOK, map[string]any{
 		"status": "ok", "version": "0.1.0", "protocol_version": 1,
 		"uptime_seconds": int64(time.Since(s.startedAt).Seconds()),
@@ -438,6 +444,15 @@ func decodeJSON(writer http.ResponseWriter, request *http.Request, target any) b
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		writeError(writer, http.StatusBadRequest, "invalid_json", err.Error())
+		return false
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		message := "request body must contain exactly one JSON value"
+		if err != nil {
+			message = err.Error()
+		}
+		writeError(writer, http.StatusBadRequest, "invalid_json", message)
 		return false
 	}
 	return true

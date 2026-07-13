@@ -25,18 +25,18 @@ export function Badge({ value, label }: { value: string; label?: string }) {
   );
 }
 
-export function Button({ variant = "secondary", icon, children, ref, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" | "ghost"; icon?: ReactNode; ref?: Ref<HTMLButtonElement> }) {
+export function Button({ variant = "secondary", icon, children, ref, className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" | "ghost"; icon?: ReactNode; ref?: Ref<HTMLButtonElement> }) {
   return (
-    <button ref={ref} className={`button button--${variant}`} {...props}>
+    <button ref={ref} className={`button button--${variant} ${className}`.trim()} {...props}>
       {icon ? <span className="button__icon" aria-hidden="true">{icon}</span> : null}
       <span>{children}</span>
     </button>
   );
 }
 
-export function IconButton({ label, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
+export function IconButton({ label, children, className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
   return (
-    <button className="icon-button" aria-label={label} title={label} {...props}>
+    <button className={`icon-button ${className}`.trim()} aria-label={label} title={label} {...props}>
       {children}
     </button>
   );
@@ -150,12 +150,24 @@ export function ConfirmButton({
   const [open, setOpen] = useState(false);
   const titleId = useId();
   const descriptionId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef(false);
+  const closeDialog = () => {
+    restoreFocus.current = true;
+    setOpen(false);
+  };
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      if (restoreFocus.current) {
+        restoreFocus.current = false;
+        triggerRef.current?.focus();
+      }
+      return;
+    }
     confirmRef.current?.focus();
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") closeDialog();
     };
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
@@ -163,22 +175,22 @@ export function ConfirmButton({
 
   return (
     <>
-      <Button variant={danger ? "danger" : "secondary"} disabled={disabled} onClick={() => setOpen(true)}>{label}</Button>
+      <Button ref={triggerRef} variant={danger ? "danger" : "secondary"} disabled={disabled} onClick={() => setOpen(true)}>{label}</Button>
       {open ? (
-        <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
+        <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog(); }}>
           <section className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}>
             <div className="confirm-dialog__title-row">
               <h2 id={titleId}>{title}</h2>
-              <IconButton label="Close confirmation" onClick={() => setOpen(false)}><X size={18} /></IconButton>
+              <IconButton label="Close confirmation" onClick={closeDialog}><X size={18} /></IconButton>
             </div>
             <p id={descriptionId}>{description}</p>
             <div className="confirm-dialog__actions">
-              <Button onClick={() => setOpen(false)}>Keep current state</Button>
+              <Button onClick={closeDialog}>Keep current state</Button>
               <Button
                 ref={confirmRef}
                 variant={danger ? "danger" : "primary"}
                 onClick={() => {
-                  setOpen(false);
+                  closeDialog();
                   void onConfirm();
                 }}
               >

@@ -10,6 +10,7 @@ coverage.out
 dist/
 build/
 .gradle/
+apps/android/.kotlin/
 .idea/
 local.properties
 node_modules/
