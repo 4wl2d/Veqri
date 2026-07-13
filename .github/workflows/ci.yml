@@ -49,24 +49,28 @@ jobs:
             runner: ubuntu-24.04
             executable_suffix: ''
             desktop_entry: veqri-desktop
+            managed_core_entry: build/release/veqri-desktop
             webkit_version: '4.1'
             service_asset: deploy/systemd/veqri-core.service
           - artifact: macos-arm64
             runner: macos-15
             executable_suffix: ''
             desktop_entry: Veqri.app
+            managed_core_entry: build/release/Veqri.app/Contents/MacOS/veqri-desktop
             webkit_version: auto
             service_asset: deploy/launchd/ai.veqri.core.plist
           - artifact: macos-x64
             runner: macos-15-intel
             executable_suffix: ''
             desktop_entry: Veqri.app
+            managed_core_entry: build/release/Veqri.app/Contents/MacOS/veqri-desktop
             webkit_version: auto
             service_asset: deploy/launchd/ai.veqri.core.plist
           - artifact: windows-x64
             runner: windows-2025
             executable_suffix: .exe
             desktop_entry: veqri-desktop.exe
+            managed_core_entry: build/release/veqri-desktop.exe
             webkit_version: auto
             service_asset: deploy/windows
     steps:
@@ -94,36 +98,50 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: apps/desktop/native
         run: go test ./...
-      - name: Build native desktop companion
-        working-directory: apps/desktop
+      - name: Build self-contained desktop application
         env:
           VEQRI_WEBKIT2GTK_VERSION: ${{ matrix.webkit_version }}
-        run: npm run native:build
+        run: go run ./cmd/veqri-build --skip-npm-ci desktop
       - name: Build Core and CLI
         run: |
           go build -trimpath -o build/bin/veqri-core${{ matrix.executable_suffix }} ./cmd/veqri-core
           go build -trimpath -o build/bin/veqri${{ matrix.executable_suffix }} ./cmd/veqri-cli
       - name: Smoke-test packaged runtime
         run: go run ./scripts/release-smoke.go --core build/bin/veqri-core${{ matrix.executable_suffix }} --cli build/bin/veqri${{ matrix.executable_suffix }}
-      - name: Package Unix executables
+      - name: Smoke-test managed Core inside desktop executable
+        run: go run ./scripts/release-smoke.go --core "${{ matrix.managed_core_entry }}" --core-arg=--veqri-managed-core --cli build/bin/veqri${{ matrix.executable_suffix }}
+      - name: Package Unix application
         if: runner.os != 'Windows'
         env:
           ARTIFACT_NAME: ${{ matrix.artifact }}
           DESKTOP_ENTRY: ${{ matrix.desktop_entry }}
-        run: tar -czf "build/veqri-${ARTIFACT_NAME}.tar.gz" -C build/bin veqri veqri-core "${DESKTOP_ENTRY}"
-      - name: Package Windows executables
+        run: tar -czf "build/veqri-${ARTIFACT_NAME}.tar.gz" -C build/release "${DESKTOP_ENTRY}"
+      - name: Package Unix service tools
+        if: runner.os != 'Windows'
+        env:
+          ARTIFACT_NAME: ${{ matrix.artifact }}
+          SERVICE_ASSET: ${{ matrix.service_asset }}
+        run: tar -czf "build/veqri-${ARTIFACT_NAME}-service-tools.tar.gz" build/bin/veqri build/bin/veqri-core "${SERVICE_ASSET}" docs/DEPLOYMENT.md
+      - name: Package Windows application
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           ARTIFACT_NAME: ${{ matrix.artifact }}
           DESKTOP_ENTRY: ${{ matrix.desktop_entry }}
+        run: Compress-Archive -Path "build/release/$env:DESKTOP_ENTRY" -DestinationPath "build/veqri-$env:ARTIFACT_NAME.zip"
+      - name: Package Windows service tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ARTIFACT_NAME: ${{ matrix.artifact }}
+          SERVICE_ASSET: ${{ matrix.service_asset }}
         run: |
-          $entries = @(
-            "build/bin/veqri.exe",
-            "build/bin/veqri-core.exe",
-            "build/bin/$env:DESKTOP_ENTRY"
-          )
-          Compress-Archive -Path $entries -DestinationPath "build/veqri-$env:ARTIFACT_NAME.zip"
+          $staging = "build/service-tools-$env:ARTIFACT_NAME"
+          New-Item -ItemType Directory -Force -Path "$staging/build/bin", "$staging/deploy/windows", "$staging/docs" | Out-Null
+          Copy-Item "build/bin/veqri.exe", "build/bin/veqri-core.exe" -Destination "$staging/build/bin"
+          Copy-Item -Recurse -Force -Path (Join-Path $env:SERVICE_ASSET '*') -Destination "$staging/deploy/windows"
+          Copy-Item "docs/DEPLOYMENT.md" -Destination "$staging/docs/DEPLOYMENT.md"
+          Compress-Archive -Path "$staging/*" -DestinationPath "build/veqri-$env:ARTIFACT_NAME-service-tools.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: veqri-${{ matrix.artifact }}
@@ -131,8 +149,12 @@ jobs:
           retention-days: 14
           path: |
             build/veqri-${{ matrix.artifact }}.*
-            ${{ matrix.service_asset }}
-            docs/DEPLOYMENT.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: veqri-${{ matrix.artifact }}-service-tools
+          if-no-files-found: error
+          retention-days: 14
+          path: build/veqri-${{ matrix.artifact }}-service-tools.*
 
   android:
     runs-on: ubuntu-latest
@@ -146,6 +168,19 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.5'
+          cache: true
       - uses: android-actions/setup-android@v3
       - run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0'
       - run: ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug assembleRelease assembleDebugAndroidTest
+      - name: Build staged real-Core APK through the shared entry point
+        working-directory: ${{ github.workspace }}
+        run: go run ./cmd/veqri-build android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: veqri-android-debug
+          if-no-files-found: error
+          retention-days: 14
+          path: build/release/Veqri-android-debug.apk

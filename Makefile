@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: generate fmt build release-check test test-go test-integration test-desktop test-android lint run-core run-desktop android-debug connector-simulators clean
+.PHONY: generate fmt build package package-all release-check test test-go test-integration test-desktop test-android lint run-core run-desktop android-debug connector-simulators clean
 
 generate:
 	./scripts/generate-protocol.sh
@@ -15,9 +15,20 @@ build: generate
 	go build -trimpath -o build/bin/veqri ./cmd/veqri-cli
 	cd apps/desktop && npm ci && npm run build
 
+package:
+	go run ./cmd/veqri-build desktop
+
+package-all:
+	go run ./cmd/veqri-build all
+
 release-check: build
-	cd apps/desktop && npm run native:build
+	go run ./cmd/veqri-build --skip-npm-ci desktop
 	go run ./scripts/release-smoke.go
+	if [ "$$(go env GOOS)" = "darwin" ]; then \
+		go run ./scripts/release-smoke.go --core build/release/Veqri.app/Contents/MacOS/veqri-desktop --core-arg=--veqri-managed-core; \
+	else \
+		go run ./scripts/release-smoke.go --core build/release/veqri-desktop --core-arg=--veqri-managed-core; \
+	fi
 
 test: test-go test-desktop test-android
 
@@ -45,7 +56,7 @@ run-desktop:
 	cd apps/desktop && npm run dev
 
 android-debug:
-	cd apps/android && ./gradlew --no-daemon assembleDebug
+	go run ./cmd/veqri-build android
 
 connector-simulators:
 	./scripts/simulate-connectors.sh

@@ -7,6 +7,12 @@ export const LINUX_WEBKIT_ENV = "VEQRI_WEBKIT2GTK_VERSION";
 export const WAILS_CLI_PACKAGE =
   "github.com/wailsapp/wails/v2/cmd/wails@v2.12.0";
 
+const NATIVE_FRONTEND_ENVIRONMENT = {
+  VITE_VEQRI_MODE: "live",
+  VITE_VEQRI_CORE_URL: "http://127.0.0.1:7342",
+  VITE_VEQRI_DEV_TOKEN: "",
+};
+
 const SUPPORTED_PLATFORMS = new Set(["darwin", "linux", "win32"]);
 const SUPPORTED_WEBKIT_VERSIONS = new Set(["auto", "4.0", "4.1"]);
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
@@ -30,6 +36,21 @@ export function parseLinuxWebKitOverride(value) {
   }
 
   return version;
+}
+
+// Vite gives existing process variables precedence over .env files. Pinning
+// these values prevents a developer's .env.local token or mock mode from being
+// compiled into a native application artifact.
+export function createNativeFrontendEnvironment(environment) {
+  const protectedNames = new Set(
+    Object.keys(NATIVE_FRONTEND_ENVIRONMENT).map((name) => name.toUpperCase()),
+  );
+  const result = Object.fromEntries(
+    Object.entries(environment).filter(
+      ([name]) => !protectedNames.has(name.toUpperCase()),
+    ),
+  );
+  return { ...result, ...NATIVE_FRONTEND_ENVIRONMENT };
 }
 
 /**
@@ -188,10 +209,10 @@ async function packageIsAvailable(packageName) {
   }
 }
 
-async function runCommand(step) {
+async function runCommand(step, environment = process.env) {
   await waitForCommand(step.command, step.args, {
     cwd: step.cwd,
-    env: process.env,
+    env: environment,
     stdio: "inherit",
   });
 }
@@ -222,7 +243,10 @@ export async function runNativeBuild() {
     webKit2Gtk41Available,
   });
 
-  await runCommand(plan.frontendBuild);
+  await runCommand(
+    plan.frontendBuild,
+    createNativeFrontendEnvironment(process.env),
+  );
 
   await rm(plan.generatedAssets.destination, { recursive: true, force: true });
   await cp(plan.generatedAssets.source, plan.generatedAssets.destination, {

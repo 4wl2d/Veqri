@@ -61,6 +61,8 @@ type DesktopAction =
   | { type: "approval.resolve"; approval_id: string; decision: "approved" | "denied"; note?: string }
   | { type: "task.cancel"; task_id: string }
   | { type: "task.retry"; task_id: string }
+  | { type: "task.reprioritize"; task_id: string; priority: number }
+  | { type: "task.dismiss"; task_id: string }
   | { type: "device.revoke"; device_id: string }
   | { type: "voice.end"; session_id: string }
   | { type: "connector.retry"; connector_id: string }
@@ -112,5 +114,5 @@ Exact event envelope:
 - `type`: `snapshot.changed | task.changed | approval.changed | core.changed | heartbeat`
 - `correlation_id`: string or `null`
 - `data.entity_id`: optional; `data.revision` is always required
-- On a non-heartbeat event whose revision is newer than the displayed snapshot, the desktop debounces and reloads the authenticated snapshot.
+- The desktop ignores only non-heartbeat events whose revision is strictly older than the displayed snapshot. An equal or newer revision may trigger a debounced authenticated reload; accepting equality avoids losing an update from legacy timestamp-based revisions.
 - The desktop reconnects with deterministic exponential delays of 500 ms, 1 s, 2 s, 4 s, 8 s, then 10 s (capped), and reports failure after eight retries. Cached data remains visible but is marked stale.

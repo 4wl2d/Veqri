@@ -1,9 +1,59 @@
 package api
 
 import (
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/veqri/veqri/internal/config"
+	"github.com/veqri/veqri/internal/managedcore"
 )
+
+func TestHealthReturnsManagedCoreOwnershipProof(t *testing.T) {
+	server := &Server{
+		config:    config.Config{ManagedCoreOwnerToken: "managed-owner-token-0123456789abcdef"},
+		startedAt: time.Now(),
+	}
+	response := httptest.NewRecorder()
+	server.handleHealth(response, httptest.NewRequest("GET", "/healthz", nil))
+	want := managedcore.OwnerProof(server.config.ManagedCoreOwnerToken)
+	if got := response.Header().Get(managedcore.OwnerTokenHeader); got != want {
+		t.Fatalf("managed owner header = %q, want %q", got, want)
+	}
+}
+
+func TestDecodeJSONRequiresExactlyOneValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		body  string
+		valid bool
+	}{
+		{name: "single value", body: `{"name":"veqri"}`, valid: true},
+		{name: "single value with whitespace", body: "{\"name\":\"veqri\"}\n\t", valid: true},
+		{name: "second object", body: `{"name":"veqri"} {}`, valid: false},
+		{name: "trailing garbage", body: `{"name":"veqri"} trailing`, valid: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest("POST", "/", strings.NewReader(tt.body))
+			response := httptest.NewRecorder()
+			var decoded struct {
+				Name string `json:"name"`
+			}
+			valid := decodeJSON(response, request, &decoded)
+			if valid != tt.valid {
+				t.Fatalf("decodeJSON() = %v, status=%d body=%s", valid, response.Code, response.Body.String())
+			}
+			if tt.valid && decoded.Name != "veqri" {
+				t.Fatalf("decoded name = %q", decoded.Name)
+			}
+			if !tt.valid && response.Code != 400 {
+				t.Fatalf("status = %d, want 400", response.Code)
+			}
+		})
+	}
+}
 
 func TestLocalOriginIncludesOnlyLoopbackAndPackagedWailsOrigins(t *testing.T) {
 	allowed := []string{

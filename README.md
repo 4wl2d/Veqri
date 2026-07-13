@@ -51,6 +51,32 @@ tests/                    deterministic integration and end-to-end scenarios
 - JDK 21 and Android SDK platform 37/build-tools 37 for Android. The Gradle 9.4.1 wrapper is checked in and checksum-verified.
 - Linux native desktop builds additionally need GTK 3 and WebKitGTK development packages. Ubuntu 24.04 uses `libgtk-3-dev` and `libwebkit2gtk-4.1-dev`.
 
+## One-command application builds
+
+Build the self-contained application for the current desktop OS from the repository root:
+
+```sh
+go run ./cmd/veqri-build
+```
+
+The output is one launchable artifact under `build/release`: `Veqri.app` on macOS, `veqri-desktop.exe` on Windows, or `veqri-desktop` on Linux. The desktop executable contains both the Wails UI and Core. On launch it starts its own managed Core process from the same executable, waits for readiness, proves child ownership with an ephemeral nonce, verifies credential compatibility, and injects the local credential. Closing the app stops that managed Core; an unexpected Core exit closes the owning UI instead of leaving it connected to a replaceable port. If another Core already owns the loopback origin, managed mode fails safely; set `VEQRI_DESKTOP_CORE_MODE=external` only when that existing process is explicitly trusted and managed elsewhere.
+
+Build the Android client without exporting an SDK path manually:
+
+```sh
+go run ./cmd/veqri-build android
+```
+
+This locates Android SDK Platform 37 in `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or the standard macOS/Linux/Windows SDK directory and writes `build/release/Veqri-android-debug.apk`. The APK uses the real Core transport and defaults to `http://10.0.2.2:7342` for an emulator. It is debug-signed and is not a store release.
+
+Build both artifacts available on the current host:
+
+```sh
+go run ./cmd/veqri-build all
+```
+
+Native desktop packages must be built on their target OS; the CI matrix produces Linux x64, macOS ARM64/Intel, and Windows x64 artifacts. One physical file cannot run across desktop and Android runtimes, so each platform receives its native format while sharing this build entry point.
+
 macOS setup used for this build:
 
 ```sh
@@ -130,22 +156,23 @@ npm run dev
 
 Do not ship an admin token embedded in browser assets. A packaged Wails shell must inject it through the runtime bridge.
 
-Build the native companion on the current Linux, macOS, or Windows host:
+Build the self-contained native application on the current Linux, macOS, or Windows host:
 
 ```sh
 cd apps/desktop
 npm run native:build
 ```
 
-The output is `build/bin/Veqri.app` on macOS, `build/bin/veqri-desktop` on Linux, and `build/bin/veqri-desktop.exe` on Windows. The build uses the pinned Wails v2.12.0 CLI through a platform-neutral Node driver; it does not rely on POSIX `mkdir`, `cp`, or `cd` commands. CI builds host-native artifacts for Linux x64, macOS ARM64/Intel, and Windows x64. See [docs/RELEASE.md](docs/RELEASE.md) for the support matrix and the remaining signing/installer work.
+The low-level output is `build/bin/Veqri.app` on macOS, `build/bin/veqri-desktop` on Linux, and `build/bin/veqri-desktop.exe` on Windows. These files contain the managed Core entry point as well as the UI. Prefer `go run ./cmd/veqri-build` for the consistently named `build/release` artifact. The build uses the pinned Wails v2.12.0 CLI through a platform-neutral Node driver; it does not rely on POSIX shell utilities. See [docs/RELEASE.md](docs/RELEASE.md) for the support matrix and remaining signing/installer work.
 
 ## Build and pair Android
 
 ```sh
-cd apps/android
-./gradlew --no-daemon assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+go run ./cmd/veqri-build android
+adb install -r build/release/Veqri-android-debug.apk
 ```
+
+The lower-level equivalent is `cd apps/android && ./gradlew --no-daemon :app:assembleDebug -PveqriFakeTransport=false`.
 
 Create a five-minute, single-use pairing code on the PC:
 

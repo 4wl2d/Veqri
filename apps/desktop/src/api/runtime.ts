@@ -2,6 +2,8 @@ import { AuthenticatedHttpGateway, CoreGatewayError, type CoreGateway } from "./
 import { MockCoreGateway } from "./mockGateway";
 import type { RuntimeConfig } from "./types";
 
+export const DEFAULT_CORE_URL = "http://127.0.0.1:7342";
+
 export async function resolveRuntimeConfig(): Promise<RuntimeConfig> {
   const wailsBridge = window.go?.main?.Bridge;
   if (!window.veqriShell && wailsBridge) {
@@ -14,7 +16,7 @@ export async function resolveRuntimeConfig(): Promise<RuntimeConfig> {
   const mode = import.meta.env.VITE_VEQRI_MODE ?? (import.meta.env.DEV ? "mock" : "live");
   return {
     mode,
-    api_base_url: import.meta.env.VITE_VEQRI_CORE_URL ?? "http://127.0.0.1:7342",
+    api_base_url: import.meta.env.VITE_VEQRI_CORE_URL ?? DEFAULT_CORE_URL,
     auth_token: mode === "mock" ? "" : (import.meta.env.VITE_VEQRI_DEV_TOKEN ?? ""),
   };
 }

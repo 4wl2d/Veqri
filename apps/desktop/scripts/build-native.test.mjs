@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   LINUX_WEBKIT_ENV,
   WAILS_CLI_PACKAGE,
+  createNativeFrontendEnvironment,
   createNativeBuildPlan,
   parseLinuxWebKitOverride,
 } from "./build-native.mjs";
@@ -149,6 +150,24 @@ describe("createNativeBuildPlan", () => {
         npmCliPath: "/tools/npm-cli.js",
       }),
     ).toThrow("desktopDirectory must be an absolute path");
+  });
+});
+
+describe("createNativeFrontendEnvironment", () => {
+  it("forces live native configuration and removes case-variant dev tokens", () => {
+    expect(
+      createNativeFrontendEnvironment({
+        PATH: "/tools",
+        VITE_VEQRI_MODE: "mock",
+        vite_veqri_dev_token: "must-not-ship",
+        VITE_VEQRI_CORE_URL: "https://wrong.invalid",
+      }),
+    ).toEqual({
+      PATH: "/tools",
+      VITE_VEQRI_MODE: "live",
+      VITE_VEQRI_CORE_URL: "http://127.0.0.1:7342",
+      VITE_VEQRI_DEV_TOKEN: "",
+    });
   });
 });
 

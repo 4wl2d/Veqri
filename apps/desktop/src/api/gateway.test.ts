@@ -45,14 +45,17 @@ describe("authenticated HTTP gateway", () => {
   });
 
   it("serializes typed action envelopes", async () => {
-    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
-      request_id: "response-id",
-      accepted: true,
-      occurred_at: "2026-07-12T09:42:18.000Z",
-      revision: 43,
-      message: "accepted",
-      artifact_path: null,
-    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const fetchImplementation = vi.fn<typeof fetch>().mockImplementation(async (_url, request) => {
+      const body = JSON.parse(String(request?.body)) as { request_id: string };
+      return new Response(JSON.stringify({
+        request_id: body.request_id,
+        accepted: true,
+        occurred_at: "2026-07-12T09:42:18.000Z",
+        revision: 43,
+        message: "accepted",
+        artifact_path: null,
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
     const gateway = new AuthenticatedHttpGateway({
       config: { mode: "live", api_base_url: "http://localhost:8420", auth_token: "secret" },
       fetchImplementation,
@@ -64,6 +67,42 @@ describe("authenticated HTTP gateway", () => {
     const body = JSON.parse(String(request?.body)) as { request_id: string; action: unknown };
     expect(body.request_id).toEqual(expect.any(String));
     expect(body.action).toEqual({ type: "task.cancel", task_id: "task-release" });
+  });
+
+  it("rejects incomplete snapshots before unsafe fields reach React", async () => {
+    const malformed: Record<string, unknown> = { ...createMockSnapshot() };
+    delete malformed.settings;
+    const gateway = new AuthenticatedHttpGateway({
+      config: { mode: "live", api_base_url: "http://127.0.0.1:7342", auth_token: "secret" },
+      fetchImplementation: vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(malformed), { status: 200 })),
+    });
+
+    await expect(gateway.loadSnapshot()).rejects.toMatchObject({ kind: "protocol" });
+  });
+
+  it("classifies a successful non-JSON response as a protocol error", async () => {
+    const gateway = new AuthenticatedHttpGateway({
+      config: { mode: "live", api_base_url: "http://127.0.0.1:7342", auth_token: "secret" },
+      fetchImplementation: vi.fn<typeof fetch>().mockResolvedValue(new Response("not-json", { status: 200 })),
+    });
+
+    await expect(gateway.loadSnapshot()).rejects.toMatchObject({ kind: "protocol" });
+  });
+
+  it("rejects an action response for a different request id", async () => {
+    const gateway = new AuthenticatedHttpGateway({
+      config: { mode: "live", api_base_url: "http://127.0.0.1:7342", auth_token: "secret" },
+      fetchImplementation: vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+        request_id: "another-request",
+        accepted: true,
+        occurred_at: "2026-07-12T09:42:18.000Z",
+        revision: 43,
+        message: "accepted",
+        artifact_path: null,
+      }), { status: 200 })),
+    });
+
+    await expect(gateway.performAction({ type: "task.cancel", task_id: "task-release" })).rejects.toMatchObject({ kind: "protocol" });
   });
 
   it("encodes websocket auth as subprotocols rather than a query parameter", () => {
@@ -117,5 +156,31 @@ describe("reconnecting event stream", () => {
     stream.stop();
     expect(states.at(-1)).toEqual(["disconnected", 0]);
     vi.useRealTimers();
+  });
+
+  it("rejects unknown event types instead of treating them as snapshot changes", () => {
+    const socket = new TestSocket();
+    const onEvent = vi.fn();
+    const onError = vi.fn();
+    const stream = new ReconnectingEventStream({
+      createSocket: () => socket,
+      url: "ws://127.0.0.1:7342/api/v1/events",
+      protocols: ["veqri.v1", "veqri.auth.dG9rZW4"],
+      listeners: { onEvent, onError, onState: vi.fn() },
+    });
+
+    stream.start();
+    socket.onmessage?.({ data: JSON.stringify({
+      id: "event-1",
+      type: "tool.credentials.changed",
+      occurred_at: "2026-07-12T09:42:18.000Z",
+      correlation_id: null,
+      sequence: 1,
+      data: { revision: 43 },
+    }) } as MessageEvent<string>);
+
+    expect(onEvent).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ kind: "protocol" }));
+    stream.stop();
   });
 });

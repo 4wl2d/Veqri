@@ -191,30 +191,60 @@ export class ReconnectingEventStream {
   }
 }
 
+const desktopEventTypes = new Set<DesktopEvent["type"]>([
+  "snapshot.changed",
+  "task.changed",
+  "approval.changed",
+  "core.changed",
+  "heartbeat",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isProtocolNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isUtcTimestamp(value: unknown): value is string {
+  return typeof value === "string"
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u.test(value)
+    && !Number.isNaN(Date.parse(value));
+}
+
 function parseDesktopEvent(raw: string): DesktopEvent {
-  const value: unknown = JSON.parse(raw);
-  if (!value || typeof value !== "object") throw new CoreGatewayError("protocol", "Event payload is not an object.");
-  const candidate = value as Partial<DesktopEvent>;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new CoreGatewayError("protocol", "Event payload is not valid JSON.");
+  }
+  if (!isRecord(value) || !isRecord(value.data)) {
+    throw new CoreGatewayError("protocol", "Event payload does not match protocol v1.");
+  }
+  const entityId = value.data.entity_id;
   if (
-    typeof candidate.id !== "string" ||
-    typeof candidate.type !== "string" ||
-    typeof candidate.occurred_at !== "string" ||
-    typeof candidate.sequence !== "number" ||
-    !candidate.data ||
-    typeof candidate.data.revision !== "number"
+    typeof value.id !== "string" ||
+    typeof value.type !== "string" ||
+    !desktopEventTypes.has(value.type as DesktopEvent["type"]) ||
+    !isUtcTimestamp(value.occurred_at) ||
+    (value.correlation_id !== null && typeof value.correlation_id !== "string") ||
+    !isProtocolNumber(value.sequence) ||
+    !isProtocolNumber(value.data.revision) ||
+    (entityId !== undefined && typeof entityId !== "string")
   ) {
     throw new CoreGatewayError("protocol", "Event payload does not match protocol v1.");
   }
-  return candidate as DesktopEvent;
+  return value as unknown as DesktopEvent;
 }
 
 function validateSnapshot(value: unknown): DesktopSnapshot {
-  if (!value || typeof value !== "object") throw new CoreGatewayError("protocol", "Core returned an invalid desktop snapshot.");
-  const snapshot = value as Partial<DesktopSnapshot>;
-  if (snapshot.protocol_version !== DESKTOP_PROTOCOL_VERSION) {
+  if (!isRecord(value)) throw new CoreGatewayError("protocol", "Core returned an invalid desktop snapshot.");
+  if (value.protocol_version !== DESKTOP_PROTOCOL_VERSION) {
     throw new CoreGatewayError(
       "protocol",
-      `Unsupported desktop protocol version ${String(snapshot.protocol_version)}; expected ${DESKTOP_PROTOCOL_VERSION}.`,
+      `Unsupported desktop protocol version ${String(value.protocol_version)}; expected ${DESKTOP_PROTOCOL_VERSION}.`,
     );
   }
   const requiredCollections: Array<keyof DesktopSnapshot> = [
@@ -230,10 +260,52 @@ function validateSnapshot(value: unknown): DesktopSnapshot {
     "providers",
     "audit_entries",
   ];
-  if (!snapshot.core || requiredCollections.some((key) => !Array.isArray(snapshot[key]))) {
+  if (
+    !isProtocolNumber(value.revision)
+    || !isUtcTimestamp(value.generated_at)
+    || !isRecord(value.core)
+    || value.core.protocol_version !== DESKTOP_PROTOCOL_VERSION
+    || !isRecord(value.core.database)
+    || !isRecord(value.core.queue)
+    || !isRecord(value.diagnostics)
+    || !Array.isArray(value.diagnostics.checks)
+    || !Array.isArray(value.diagnostics.recent_logs)
+    || !isRecord(value.diagnostics.event_stream)
+    || !isRecord(value.diagnostics.webrtc)
+    || !isRecord(value.diagnostics.storage)
+    || !isRecord(value.settings)
+    || !new Set(["dark", "light", "system"]).has(String(value.settings.theme))
+    || requiredCollections.some((key) => !Array.isArray(value[key]))
+  ) {
     throw new CoreGatewayError("protocol", "Desktop snapshot is missing required protocol v1 fields.");
   }
-  return snapshot as DesktopSnapshot;
+
+  const snapshot = value as unknown as DesktopSnapshot;
+  const collectionsAreSafe =
+    snapshot.devices.every((item) => isRecord(item) && Array.isArray(item.capabilities))
+    && snapshot.tasks.every((item) => isRecord(item) && Array.isArray(item.allowed_tools) && Array.isArray(item.dependencies) && Array.isArray(item.artifacts))
+    && snapshot.agents.every((item) => isRecord(item) && Array.isArray(item.capabilities) && Array.isArray(item.tool_scopes))
+    && snapshot.tools.every((item) => isRecord(item) && Array.isArray(item.scopes) && Array.isArray(item.supported_os))
+    && snapshot.approvals.every((item) => isRecord(item) && isRecord(item.arguments));
+  if (!collectionsAreSafe) {
+    throw new CoreGatewayError("protocol", "Desktop snapshot contains malformed protocol v1 collections.");
+  }
+  return snapshot;
+}
+
+function validateActionResponse(value: unknown, expectedRequestId: string): DesktopActionResponse {
+  if (
+    !isRecord(value)
+    || value.request_id !== expectedRequestId
+    || typeof value.accepted !== "boolean"
+    || !isUtcTimestamp(value.occurred_at)
+    || !isProtocolNumber(value.revision)
+    || typeof value.message !== "string"
+    || (value.artifact_path !== null && typeof value.artifact_path !== "string")
+  ) {
+    throw new CoreGatewayError("protocol", "Core returned an invalid desktop action response.");
+  }
+  return value as unknown as DesktopActionResponse;
 }
 
 function toError(value: unknown, fallback: string): Error {
@@ -278,11 +350,11 @@ export class AuthenticatedHttpGateway implements CoreGateway {
 
   async performAction(action: DesktopAction, signal?: AbortSignal): Promise<DesktopActionResponse> {
     const request: DesktopActionRequest = { request_id: requestId(), action };
-    return (await this.requestJson(
+    return validateActionResponse(await this.requestJson(
       "/api/v1/desktop/actions",
       { method: "POST", body: JSON.stringify(request) },
       signal,
-    )) as DesktopActionResponse;
+    ), request.request_id);
   }
 
   connectEvents(listeners: StreamListeners): () => void {
@@ -331,7 +403,11 @@ export class AuthenticatedHttpGateway implements CoreGateway {
         }
         throw new CoreGatewayError("server", message, response.status);
       }
-      return await response.json();
+      try {
+        return await response.json();
+      } catch {
+        throw new CoreGatewayError("protocol", "Veqri Core returned invalid JSON.", response.status);
+      }
     } catch (error) {
       if (error instanceof CoreGatewayError) throw error;
       if (signal.aborted) {

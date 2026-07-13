@@ -17,12 +17,15 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/veqri/veqri/internal/managedcore"
 )
 
 const smokeToken = "veqri-release-smoke-token-0123456789abcdef"
 
 type smokeConfig struct {
 	corePath string
+	coreArg  string
 	cliPath  string
 	timeout  time.Duration
 }
@@ -30,6 +33,7 @@ type smokeConfig struct {
 func main() {
 	config := smokeConfig{}
 	flag.StringVar(&config.corePath, "core", defaultBinaryPath("veqri-core", runtime.GOOS), "path to the built Veqri Core executable")
+	flag.StringVar(&config.coreArg, "core-arg", "", "optional argument used to start Core from a multicall desktop executable")
 	flag.StringVar(&config.cliPath, "cli", defaultBinaryPath("veqri", runtime.GOOS), "path to the built Veqri CLI executable")
 	flag.DurationVar(&config.timeout, "timeout", 30*time.Second, "maximum time for the release smoke test")
 	flag.Parse()
@@ -82,7 +86,7 @@ func runSmoke(config smokeConfig) error {
 		return err
 	}
 	baseURL := "http://" + address
-	environment := mergeEnvironment(os.Environ(), map[string]string{
+	environmentOverrides := map[string]string{
 		"VEQRI_ADDR":              address,
 		"VEQRI_AUTH_TOKEN":        smokeToken,
 		"VEQRI_DATABASE":          filepath.Join(root, "veqri.db"),
@@ -91,21 +95,34 @@ func runSmoke(config smokeConfig) error {
 		"VEQRI_RETENTION_DAYS":    "0",
 		"VEQRI_URL":               baseURL,
 		"VEQRI_WORKSPACES":        workspace,
-	})
+	}
+	if config.coreArg != "" {
+		environmentOverrides[managedcore.OwnerTokenEnvironment] = "release-smoke-managed-owner-token-0123456789abcdef"
+	}
+	environment := mergeEnvironment(os.Environ(), environmentOverrides)
 
-	coreCommand := exec.Command(config.corePath)
+	var coreArguments []string
+	if config.coreArg != "" {
+		coreArguments = append(coreArguments, config.coreArg)
+	}
+	coreCommand := exec.Command(config.corePath, coreArguments...)
 	coreCommand.Env = environment
 	coreCommand.Dir = workspace
 	var coreOutput bytes.Buffer
 	var coreErrors bytes.Buffer
 	coreCommand.Stdout = &coreOutput
 	coreCommand.Stderr = &coreErrors
+	coreInput, err := coreCommand.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("create Core lifecycle pipe: %w", err)
+	}
 	if err := coreCommand.Start(); err != nil {
+		_ = coreInput.Close()
 		return fmt.Errorf("start Core: %w", err)
 	}
 	coreDone := make(chan error, 1)
 	go func() { coreDone <- coreCommand.Wait() }()
-	defer stopCore(coreCommand, coreDone)
+	defer stopCore(coreCommand, coreDone, coreInput, config.coreArg != "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), config.timeout)
 	defer cancel()
@@ -302,9 +319,18 @@ func authenticatedJSON(ctx context.Context, client *http.Client, method, endpoin
 	return payload, nil
 }
 
-func stopCore(command *exec.Cmd, done <-chan error) {
+func stopCore(command *exec.Cmd, done <-chan error, input io.Closer, waitForInput bool) {
 	if command.Process == nil || (command.ProcessState != nil && command.ProcessState.Exited()) {
+		_ = input.Close()
 		return
+	}
+	_ = input.Close()
+	if waitForInput {
+		select {
+		case <-done:
+			return
+		case <-time.After(5 * time.Second):
+		}
 	}
 	if runtime.GOOS == "windows" {
 		_ = command.Process.Kill()

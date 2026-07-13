@@ -104,6 +104,13 @@ fun PairingScreen(
         mutableStateOf(TextFieldValue("My Android"))
     }
     val pairingCodeLength = if (state.isLocalSimulator) 6 else 8
+    val canPair = codeValue.text.length == pairingCodeLength && endpointValue.text.isNotBlank() &&
+        deviceNameValue.text.isNotBlank() && !state.pairingInProgress
+    val submitPair = {
+        if (canPair) {
+            onAction(VeqriAction.Pair(endpointValue.text, codeValue.text, deviceNameValue.text))
+        }
+    }
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -151,20 +158,15 @@ fun PairingScreen(
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = {
-                    onAction(VeqriAction.Pair(endpointValue.text, codeValue.text, deviceNameValue.text))
-                }),
+                keyboardActions = KeyboardActions(onDone = { submitPair() }),
                 modifier = Modifier.fillMaxWidth().testTag("pairing-code"),
                 isError = state.pairingError != null,
                 supportingText = state.pairingError?.let { error -> ({ Text(error) }) },
             )
             Spacer(Modifier.height(16.dp))
             Button(
-                onClick = {
-                    onAction(VeqriAction.Pair(endpointValue.text, codeValue.text, deviceNameValue.text))
-                },
-				enabled = codeValue.text.length == pairingCodeLength && endpointValue.text.isNotBlank() &&
-                    deviceNameValue.text.isNotBlank() && !state.pairingInProgress,
+                onClick = submitPair,
+                enabled = canPair,
                 modifier = Modifier.fillMaxWidth().testTag("pair-button"),
             ) {
                 Text(if (state.pairingInProgress) "Pairing…" else "Pair device")
