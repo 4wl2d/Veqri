@@ -87,5 +87,5 @@ func readIdentityAsset(t testing.TB, filename string) string {
 	if err != nil {
 		t.Fatalf("read %s: %v", filename, err)
 	}
-	return string(contents)
+	return strings.ReplaceAll(string(contents), "\r\n", "\n")
 }
