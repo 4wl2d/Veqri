@@ -233,7 +233,6 @@ interface CoreTransport {
 
     companion object {
         const val PROTOCOL_VERSION = 1
-        const val MAX_TTS_TEXT_CHARS = 12 * 1024
     }
 }
 

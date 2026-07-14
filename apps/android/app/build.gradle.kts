@@ -60,6 +60,7 @@ android {
 
     packaging {
         resources.excludes += setOf(
+            "**/*.proto",
             "/META-INF/{AL2.0,LGPL2.1}",
             "/META-INF/LICENSE*",
             "/META-INF/NOTICE*",
@@ -70,6 +71,7 @@ android {
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
 
+    implementation(project(":protocol"))
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
@@ -93,6 +95,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20251224")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

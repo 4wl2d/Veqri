@@ -1,21 +1,9 @@
 package com.veqri.android.network
 
 import com.veqri.android.BuildConfig
-import com.veqri.android.data.ApprovalRequest
-import com.veqri.android.data.ApprovalRisk
-import com.veqri.android.data.ApprovalStatus
-import com.veqri.android.data.AudioRouteKind
-import com.veqri.android.data.CallDirection
 import com.veqri.android.data.ConnectionStatus
-import com.veqri.android.data.ConversationMessage
 import com.veqri.android.data.CredentialRotationCandidate
 import com.veqri.android.data.DeviceCredential
-import com.veqri.android.data.DialogPhase
-import com.veqri.android.data.MessageAuthor
-import com.veqri.android.data.TaskRecord
-import com.veqri.android.data.TaskStatus
-import com.veqri.android.data.TtsPlaybackStatus
-import com.veqri.android.data.VoiceSession
 import java.net.URI
 import java.time.Instant
 import java.util.Locale
@@ -359,14 +347,14 @@ class OkHttpCoreTransport(
 
     override suspend fun send(command: CoreCommand) {
         val webSocket = socket ?: throw TransportUnavailableException("Veqri Core is not connected.")
-        val accepted = webSocket.send(command.toJson().toString())
+        val accepted = webSocket.send(DeviceJsonCodec.encode(command).toString())
         if (!accepted) {
             throw TransportUnavailableException("The command could not be queued for delivery.")
         }
     }
 
     override suspend fun sendAwaitingCommit(command: CoreCommand): CommandCommitResult {
-        val payload = command.toJson()
+        val payload = DeviceJsonCodec.encode(command)
         val commandType = payload.getString("type")
         val pending = CompletableDeferred<CoreEvent.CommandResult>()
         check(pendingCommandCommits.putIfAbsent(command.commandId, pending) == null) {
@@ -667,215 +655,5 @@ object EndpointPolicy {
         return normalized
     }
 }
-
-private fun CoreCommand.toJson(): JSONObject {
-    val payload = JSONObject()
-        .put("command_id", commandId)
-        .put("protocol_version", CoreTransport.PROTOCOL_VERSION)
-    return when (this) {
-        is CoreCommand.SendText -> payload
-            .put("type", "conversation.send_text")
-            .put("conversation_id", conversationId)
-            .put("text", text)
-			.put("retain_transcript", retainTranscript)
-		is CoreCommand.SetTranscriptRetention -> payload
-			.put("type", "conversation.set_transcript_retention")
-			.put("conversation_id", conversationId)
-			.put("enabled", enabled)
-		is CoreCommand.StartCall -> payload.put("type", "voice.start").put("retain_transcript", retainTranscript)
-		is CoreCommand.SimulateIncomingCall -> payload.put("type", "debug.voice.incoming").put("retain_transcript", retainTranscript)
-        is CoreCommand.AnswerCall -> payload.put("type", "voice.answer").put("session_id", sessionId)
-        is CoreCommand.DeclineCall -> payload.put("type", "voice.decline").put("session_id", sessionId)
-        is CoreCommand.EndCall -> payload.put("type", "voice.end").put("session_id", sessionId)
-        is CoreCommand.SetMuted -> payload
-            .put("type", "voice.set_muted")
-            .put("session_id", sessionId)
-            .put("is_muted", isMuted)
-        is CoreCommand.SetPushToTalk -> payload
-            .put("type", "voice.set_push_to_talk")
-            .put("session_id", sessionId)
-            .put("enabled", enabled)
-        is CoreCommand.SelectAudioRoute -> payload
-            .put("type", "voice.select_audio_route")
-            .put("session_id", sessionId)
-            .put("route", route.name)
-        is CoreCommand.InterruptTts -> payload
-            .put("type", "voice.interrupt_tts")
-            .put("session_id", sessionId)
-        is CoreCommand.ResolveApproval -> payload
-            .put("type", if (approved) "approval.approve" else "approval.deny")
-            .put("approval_id", approvalId)
-        is CoreCommand.CancelTask -> payload.put("type", "task.cancel").put("task_id", taskId)
-        is CoreCommand.RetryTask -> payload.put("type", "task.retry").put("task_id", taskId)
-    }
-}
-
-internal fun parseEvent(json: JSONObject): CoreEvent {
-    val type = json.getString("type")
-    val eventId = json.getString("id")
-    val correlationId = json.optString("correlation_id", eventId)
-    val payload = json.optJSONObject("payload") ?: json
-    return when (type) {
-        "sync.snapshot" -> CoreEvent.AuthoritativeSnapshot(
-            eventId = eventId,
-            correlationId = correlationId,
-            snapshotId = payload.getString("snapshot_id"),
-            conversationId = payload.optionalString("conversation_id"),
-            transcriptRetention = payload.getBoolean("transcript_retention"),
-            messages = payload.objectList("messages") { item ->
-                item.toConversationMessage(item.optString("correlation_id", correlationId))
-            },
-            tasks = payload.objectList("tasks") { item ->
-                item.toTaskRecord(item.optString("correlation_id", correlationId))
-            },
-            approvals = payload.objectList("approvals", JSONObject::toApprovalRequest),
-            voiceSession = payload.optJSONObject("voice_session")?.toVoiceSession(),
-        )
-        "command.result" -> CoreEvent.CommandResult(
-            eventId = eventId,
-            correlationId = correlationId,
-            commandId = payload.getString("command_id"),
-            commandType = payload.getString("command_type"),
-            committed = commandResultCommitted(payload.getString("status")),
-            safeMessage = payload.optionalString("safe_message")?.take(240),
-        )
-        "conversation.message_added" -> CoreEvent.MessageAdded(
-            eventId,
-            correlationId,
-            payload.toConversationMessage(correlationId),
-        )
-        "task.changed" -> CoreEvent.TaskChanged(
-            eventId,
-            correlationId,
-            payload.toTaskRecord(correlationId),
-        )
-        "approval.changed" -> CoreEvent.ApprovalChanged(
-            eventId,
-            correlationId,
-            payload.toApprovalRequest(),
-        )
-        "transcript.partial" -> CoreEvent.PartialTranscript(
-            eventId,
-            correlationId,
-            payload.getString("conversation_id"),
-            payload.optString("text"),
-        )
-        "transcript.final" -> CoreEvent.FinalTranscript(
-            eventId,
-            correlationId,
-            payload.getString("conversation_id"),
-            payload.optString("text"),
-        )
-        "voice.incoming" -> CoreEvent.IncomingCall(eventId, correlationId, payload.toVoiceSession())
-        "voice.changed" -> CoreEvent.VoiceChanged(eventId, correlationId, payload.toVoiceSession())
-        "tts.changed" -> CoreEvent.TtsChanged(
-            eventId,
-            correlationId,
-            enumValue(payload.optString("status"), TtsPlaybackStatus.IDLE),
-        )
-        "tts.speak" -> CoreEvent.TtsSpeak(
-            eventId,
-            correlationId,
-            payload.getString("session_id"),
-            payload.getString("conversation_id"),
-            boundTtsText(payload.getString("text")),
-        )
-        else -> CoreEvent.ProtocolError(eventId, correlationId, "Unsupported event type: $type")
-    }
-}
-
-private fun JSONObject.toConversationMessage(defaultCorrelationId: String) = ConversationMessage(
-    id = getString("message_id"),
-    conversationId = getString("conversation_id"),
-    author = enumValue(optString("author"), MessageAuthor.SYSTEM),
-    text = getString("text"),
-    createdAtEpochMillis = optLong("created_at_epoch_millis", System.currentTimeMillis()),
-    correlationId = optString("correlation_id", defaultCorrelationId),
-)
-
-private fun JSONObject.toTaskRecord(defaultCorrelationId: String): TaskRecord {
-    val taskId = getString("task_id")
-    return TaskRecord(
-        id = taskId,
-        rootTaskId = optString("root_task_id").ifBlank { taskId },
-        conversationId = optString("conversation_id"),
-        goal = optString("goal"),
-        assignedAgent = optString("assigned_agent", "unassigned"),
-        status = enumValue(optString("status"), TaskStatus.CREATED),
-        progressPercent = optInt("progress_percent", 0).coerceIn(0, 100),
-        summary = optString("summary"),
-        createdAtEpochMillis = optLong("created_at_epoch_millis"),
-        updatedAtEpochMillis = optLong("updated_at_epoch_millis"),
-        correlationId = optString("correlation_id", defaultCorrelationId),
-        canRetry = optBoolean("can_retry", false),
-        priority = optInt("priority", 0).coerceIn(-100, 100),
-        dismissed = optBoolean("dismissed", false),
-    )
-}
-
-private fun JSONObject.toApprovalRequest() = ApprovalRequest(
-    id = getString("approval_id"),
-    taskId = getString("task_id"),
-    title = optString("title", "Tool approval required"),
-    redactedArguments = optString("redacted_arguments", "Arguments hidden"),
-    risk = enumValue(optString("risk"), ApprovalRisk.STATE_CHANGING),
-    expiresAtEpochMillis = optLong("expires_at_epoch_millis"),
-    status = enumValue(optString("status"), ApprovalStatus.PENDING),
-    requestedScopes = stringList("requested_scopes"),
-    reason = optString("reason"),
-)
-
-private inline fun <T> JSONObject.objectList(
-    name: String,
-    transform: (JSONObject) -> T,
-): List<T> {
-    val array = optJSONArray(name) ?: return emptyList()
-    return buildList(array.length()) {
-        for (index in 0 until array.length()) add(transform(array.getJSONObject(index)))
-    }
-}
-
-private fun JSONObject.stringList(name: String): List<String> {
-    val array = optJSONArray(name) ?: return emptyList()
-    return buildList(array.length()) {
-        for (index in 0 until array.length()) add(array.getString(index))
-    }
-}
-
-internal fun boundTtsText(text: String): String {
-    if (text.length <= CoreTransport.MAX_TTS_TEXT_CHARS) return text
-    var end = CoreTransport.MAX_TTS_TEXT_CHARS
-    if (Character.isHighSurrogate(text[end - 1]) && Character.isLowSurrogate(text[end])) {
-        end--
-    }
-    return text.substring(0, end)
-}
-
-internal fun commandResultCommitted(status: String): Boolean = when (status) {
-    "COMMITTED" -> true
-    "REJECTED" -> false
-    // Anything else is an unknown outcome; parsing must fail so the commit waiter times out and reconnects.
-    else -> throw IllegalArgumentException("Unsupported command result status.")
-}
-
-private fun JSONObject.optionalString(name: String): String? =
-    if (!has(name) || isNull(name)) null else getString(name).takeIf(String::isNotBlank)
-
-private fun JSONObject.toVoiceSession() = VoiceSession(
-    id = getString("session_id"),
-    conversationId = getString("conversation_id"),
-    direction = enumValue(optString("direction"), CallDirection.INCOMING),
-    phase = enumValue(optString("phase"), DialogPhase.IDLE),
-    startedAtEpochMillis = optLong("started_at_epoch_millis").takeIf { it > 0 },
-    isMuted = optBoolean("is_muted"),
-    isPushToTalk = optBoolean("is_push_to_talk"),
-    selectedAudioRoute = enumValue(optString("audio_route"), AudioRouteKind.EARPIECE),
-    ttsPlayback = enumValue(optString("tts_status"), TtsPlaybackStatus.IDLE),
-    isSimulatedMedia = optBoolean("is_simulated_media", false),
-    mediaNotice = optString("media_notice"),
-)
-
-private inline fun <reified T : Enum<T>> enumValue(value: String, fallback: T): T =
-    enumValues<T>().firstOrNull { it.name.equals(value, ignoreCase = true) } ?: fallback
 
 class TransportUnavailableException(message: String) : IllegalStateException(message)

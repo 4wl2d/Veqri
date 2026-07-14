@@ -4,6 +4,7 @@ import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import com.veqri.android.data.TtsPlaybackStatus
+import com.veqri.android.protocol.requireTtsTextWithinLimit
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CompletableDeferred
@@ -36,7 +37,9 @@ class NoOpSpeechPlayback : SpeechPlayback {
     override val state: StateFlow<SpeechPlaybackState> = mutableState.asStateFlow()
 
     override suspend fun speak(sessionId: String, text: String) {
-        require(text.isNotBlank()) { "Speech text must not be blank." }
+        val normalized = text.trim()
+        require(normalized.isNotEmpty()) { "Speech text must not be blank." }
+        requireTtsTextWithinLimit(normalized)
     }
 
     override suspend fun stop() = Unit
@@ -71,7 +74,7 @@ class AndroidTextToSpeechPlayback(context: Context) : SpeechPlayback {
         val normalized = text.trim()
         require(sessionId.isNotBlank()) { "A voice session is required for speech playback." }
         require(normalized.isNotEmpty()) { "Speech text must not be blank." }
-        require(normalized.length <= MAX_LOGICAL_TEXT_CHARS) { "Speech text exceeds the local playback limit." }
+        requireTtsTextWithinLimit(normalized)
 
         mutex.withLock {
             mutableState.value = SpeechPlaybackState(TtsPlaybackStatus.BUFFERING, sessionId)
@@ -232,7 +235,6 @@ class AndroidTextToSpeechPlayback(context: Context) : SpeechPlayback {
     }
 
     companion object {
-        const val MAX_LOGICAL_TEXT_CHARS = 12 * 1024
         private const val INIT_TIMEOUT_MILLIS = 5_000L
     }
 }

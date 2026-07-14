@@ -38,7 +38,7 @@ connectors/               normalized messaging and local-event adapters
 agents/                   built-in and adapter agent implementations
 tools/                    structured PC tool implementations
 protocol/proto/veqri/v1/  canonical cross-platform contracts
-protocol/generated/       reproducible generated clients
+protocol/generated/       reproducible Go and Android Java Lite clients
 deploy/                   Docker, systemd, launchd, and Windows service assets
 docs/                     architecture, security, operations, and ADRs
 tests/                    deterministic integration and end-to-end scenarios
@@ -92,6 +92,7 @@ macOS setup used for this build:
 
 ```sh
 brew install go protobuf
+protoc --version # must print: libprotoc 35.1
 go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
 cd /path/to/veqri/apps/desktop && npm ci
@@ -101,10 +102,11 @@ cd /path/to/veqri/apps/android && ./gradlew --version
 ## Generate protocol code
 
 ```sh
-./scripts/generate-protocol.sh
+make generate
+make check-generated
 ```
 
-Generated Go code is committed so normal builds do not depend on a generator. Regeneration must leave `git diff` clean.
+`make generate` refreshes the Go clients and invokes Android's `:protocol:regenerateAndroidProtocolBindings` task for the self-contained `device.proto` projection. The separate Java 17 module pins Protobuf Gradle plugin `0.10.0`, `protoc` `4.35.1`, and `protobuf-javalite` `4.35.1`. Generated Go code and the Android Java Lite mirror under `protocol/generated/android` are committed. `make check-generated` regenerates the Go clients with pinned tools and rejects tracked or untracked differences, then checks the Android mirror against fresh output by relative path and bytes. Regeneration must leave `git diff` clean.
 
 ## Start Veqri Core
 
@@ -255,7 +257,7 @@ Android:
 
 ```sh
 cd apps/android
-./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+./gradlew --no-daemon :protocol:checkAndroidProtocolBindings testDebugUnitTest lintDebug assembleDebug
 ./gradlew --no-daemon assembleRelease assembleDebugAndroidTest
 ```
 

@@ -17,6 +17,21 @@ jobs:
         with:
           go-version: '1.26.5'
           cache: true
+      - name: Install pinned Protobuf compiler
+        env:
+          PROTOC_SHA256: 6930ebf62bd4ea607b98fff052596c6ee564b9835b4ce172c75a3f53ae9d91b7
+        run: |
+          archive="$RUNNER_TEMP/protoc-35.1-linux-x86_64.zip"
+          curl --fail --location --retry 3 --output "$archive" https://github.com/protocolbuffers/protobuf/releases/download/v35.1/protoc-35.1-linux-x86_64.zip
+          echo "$PROTOC_SHA256  $archive" | sha256sum --check
+          unzip -q "$archive" -d "$RUNNER_TEMP/protoc"
+          echo "$RUNNER_TEMP/protoc/bin" >> "$GITHUB_PATH"
+          echo "PROTO_INCLUDE=$RUNNER_TEMP/protoc/include" >> "$GITHUB_ENV"
+      - name: Install pinned Go Protobuf plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
+      - run: make check-generated-go
       - run: go test -race ./...
       - run: go vet ./...
       - run: go build ./cmd/veqri-core ./cmd/veqri-cli
@@ -180,7 +195,7 @@ jobs:
           cache: true
       - uses: android-actions/setup-android@v3
       - run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0'
-      - run: ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug assembleRelease assembleDebugAndroidTest
+      - run: ./gradlew --no-daemon :protocol:checkAndroidProtocolBindings testDebugUnitTest lintDebug assembleDebug assembleRelease assembleDebugAndroidTest
       - name: Build staged real-Core APK through the shared entry point
         working-directory: ${{ github.workspace }}
         run: go run ./cmd/veqri-build android

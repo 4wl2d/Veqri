@@ -1,15 +1,28 @@
 SHELL := /bin/sh
 
-.PHONY: generate fmt binaries build package package-all release-check test test-go test-integration test-desktop test-android lint run-core run-desktop android-debug connector-simulators clean
+.PHONY: generate generate-go generate-android check-generated check-generated-go check-generated-android fmt binaries build package package-all release-check test test-go test-integration test-desktop test-android lint run-core run-desktop android-debug connector-simulators clean
 
-generate:
+generate: generate-go generate-android
+
+generate-go:
 	./scripts/generate-protocol.sh
+
+generate-android:
+	cd apps/android && ./gradlew --no-daemon :protocol:regenerateAndroidProtocolBindings
+
+check-generated: check-generated-go check-generated-android
+
+check-generated-go:
+	./scripts/check-generated-go.sh
+
+check-generated-android:
+	cd apps/android && ./gradlew --no-daemon :protocol:checkAndroidProtocolBindings
 
 fmt:
 	gofmt -w $$(find . -name '*.go' -not -path './apps/*')
 	cd apps/desktop && npm run format --if-present
 
-binaries: generate
+binaries: generate-go
 	go run ./cmd/veqri-build binaries
 
 build: binaries
@@ -42,12 +55,12 @@ test-desktop:
 	cd apps/desktop && npm ci && npm run typecheck && npm test -- --run && npm run build
 
 test-android:
-	cd apps/android && ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug assembleRelease assembleDebugAndroidTest
+	cd apps/android && ./gradlew --no-daemon :protocol:checkAndroidProtocolBindings testDebugUnitTest lintDebug assembleDebug assembleRelease assembleDebugAndroidTest
 
 lint:
 	go vet ./...
 	cd apps/desktop && npm run typecheck
-	cd apps/android && ./gradlew --no-daemon lintDebug
+	cd apps/android && ./gradlew --no-daemon :protocol:checkAndroidProtocolBindings lintDebug
 
 run-core:
 	go run ./cmd/veqri-core
@@ -63,4 +76,4 @@ connector-simulators:
 
 clean:
 	go clean -testcache
-	rm -rf build apps/desktop/dist apps/desktop/node_modules apps/android/app/build
+	rm -rf build apps/desktop/dist apps/desktop/node_modules apps/android/app/build apps/android/protocol/build

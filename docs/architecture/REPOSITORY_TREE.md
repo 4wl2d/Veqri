@@ -19,7 +19,7 @@ veqri/
 │   ├── shell/ filesystem/ git/ http/ native_apps/ notifications/
 ├── protocol/
 │   ├── proto/veqri/v1/
-│   └── generated/go/veqri/v1/
+│   └── generated/{android,go}/
 ├── deploy/
 │   ├── docker/ systemd/ launchd/ windows/
 ├── docs/

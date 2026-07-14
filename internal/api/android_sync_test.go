@@ -125,14 +125,24 @@ func TestAndroidSnapshotTextTruncationPreservesUTF8(t *testing.T) {
 	}
 }
 
-func TestAndroidLiveTTSBoundPreservesUTF8AndFrameHeadroom(t *testing.T) {
-	value := strings.Repeat("🚀", androidLiveTTSMaxBytes)
-	truncated := androidTruncateUTF8(value, androidLiveTTSMaxBytes)
-	if !utf8.ValidString(truncated) {
-		t.Fatal("bounded TTS text is not valid UTF-8")
-	}
-	if len(truncated) > androidLiveTTSMaxBytes || len(truncated) >= 128<<10 {
-		t.Fatalf("bounded TTS text length = %d", len(truncated))
+func TestAndroidLiveTTSBoundUsesUTF8BytesAndPreservesCodePoints(t *testing.T) {
+	for name, exact := range map[string]string{
+		"ascii": strings.Repeat("x", androidLiveTTSMaxBytes),
+		"cjk":   strings.Repeat("界", androidLiveTTSMaxBytes/3),
+		"emoji": strings.Repeat("🚀", androidLiveTTSMaxBytes/4),
+	} {
+		t.Run(name+" exact", func(t *testing.T) {
+			if got := androidTruncateUTF8(exact, androidLiveTTSMaxBytes); got != exact {
+				t.Fatalf("exact %s value changed: bytes=%d", name, len(got))
+			}
+		})
+		t.Run(name+" over", func(t *testing.T) {
+			over := exact + exact[:len(exact)/(utf8.RuneCountInString(exact))]
+			got := androidTruncateUTF8(over, androidLiveTTSMaxBytes)
+			if !utf8.ValidString(got) || len(got) > androidLiveTTSMaxBytes || !strings.HasSuffix(got, "…") {
+				t.Fatalf("bounded %s value: bytes=%d valid=%v", name, len(got), utf8.ValidString(got))
+			}
+		})
 	}
 }
 

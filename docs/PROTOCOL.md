@@ -2,7 +2,7 @@
 
 ## Canonical schema
 
-`protocol/proto/veqri/v1` is canonical for shared semantics. Go and Kotlin-compatible options are generated from the same sources. The first edge transport is JSON over HTTP/WebSocket; a gRPC service definition is included for strongly typed local/remote adapters.
+`protocol/proto/veqri/v1` is canonical for shared semantics. Go and Android Java Lite bindings are generated from the same sources. The first edge transport is JSON over HTTP/WebSocket; a gRPC service definition is included for strongly typed local/remote adapters.
 
 Version negotiation uses major `1`, minor `0`, and a capability list. Every authenticated HTTP request sends `X-Veqri-Protocol-Version: 1`; a missing or malformed header, or an incompatible major, receives HTTP 426. Every WebSocket client must offer `veqri.v1`; the Android device WebSocket also sends the explicit protocol header during its authenticated upgrade.
 
@@ -55,19 +55,24 @@ Commands contain `command_id`, `protocol_version`, and a discriminated `type`. C
 - `tts.changed`
 - `command.result`
 
+`protocol/proto/veqri/v1/device.proto` is the self-contained typed projection of these Android commands, the reconnect snapshot, and events. It does not change the public transport: command objects and event envelopes remain the current flat, snake-case JSON shapes. Android's `DeviceJsonCodec` translates that JSON through generated Java Lite messages and then maps to immutable domain models; generated messages do not enter repository, ViewModel, or Compose state.
+
 `conversation.set_transcript_retention` is commit-acknowledged. Core replies once with a `command.result` whose `correlation_id` and payload `command_id` equal the submitted command ID and whose status is `COMMITTED` or `REJECTED`. `COMMITTED` is sent only after the device default, optional current-conversation policy, canonical transcript scrub, and audit fact commit together. Android serializes user actions around this command and changes DataStore/UI state only after that result. A timeout or disconnect is an unknown outcome: Android does not retry or send work carrying the old preference; it reconnects and waits for `sync.snapshot`.
 
 Text/call content commands cannot elevate retention. `retain_transcript=false` may opt down for new work, but `true` is intersected with Core's durable device and existing-conversation policies. Therefore a stale client after a lost acknowledgement or an administrator-disabled conversation cannot silently re-enable storage; only the explicit acknowledged policy command can opt back in.
 
-`tts.speak` is emitted only when Core actually starts the matching active voice session and carries one logical concise answer (`session_id`, `conversation_id`, `status=BUFFERING`, and `text`) for Android-side playback. Core bounds the UTF-8 text to 12 KiB. `tts.changed` carries server-side streaming status only; Android must not speak individual synthetic/provider chunks. This separation makes replay, queued results, and barge-in behavior unambiguous.
+`tts.speak` is emitted only when Core actually starts the matching active voice session and carries one logical concise answer (`session_id`, `conversation_id`, `status=BUFFERING`, and `text`) for Android-side playback. The end-to-end contract bounds `text` to 12,288 UTF-8 bytes; Core truncates on a valid Unicode boundary and Android enforces the same byte limit before the generated message and again at playback. Platform-specific utterance splitting is a separate adapter concern. `tts.changed` carries server-side streaming status only; Android must not speak individual synthetic/provider chunks. This separation makes replay, queued results, and barge-in behavior unambiguous.
 
 On connect or reconnect, Core sends one bounded `sync.snapshot` before live deltas. Android atomically replaces its visible/cache window from that snapshot, pruning stale records; `transcript_retention` is the authoritative device value and resolves an unconfirmed privacy-command outcome. The payload is capped below the client's 128 KiB frame limit and prefers active tasks/pending approvals before recent history. Subsequent stream events are ordered deltas until the next reconnect.
 
 ## Generation
 
 ```sh
-./scripts/generate-protocol.sh
+make generate
+make check-generated
 go test ./protocol/generated/go/...
 ```
+
+`make generate` runs the Go generator and the Android `:protocol:regenerateAndroidProtocolBindings` task. `make check-generated` reruns the pinned Go generator and rejects tracked or untracked output differences. The separate Java 17 module pins Protobuf Gradle plugin `0.10.0`, `protoc` `4.35.1`, and `protobuf-javalite` `4.35.1`; the Java Lite mirror is committed under `protocol/generated/android`. `:protocol:checkAndroidProtocolBindings` compares a fresh generation with that mirror by relative path and bytes and is an Android CI gate.
 
 Compatibility checks compare checked-in schemas/generated code. Fields must be added, not renumbered or repurposed; removed fields should be reserved in a subsequent migration.
