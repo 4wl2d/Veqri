@@ -9,6 +9,8 @@ export const mockSnapshot: DesktopSnapshot = {
   core: {
     status: "healthy",
     version: "0.1.0-dev",
+    commit: "unknown",
+    build_time: "unknown",
     protocol_version: 1,
     started_at: "2026-07-12T02:31:04.000Z",
     uptime_seconds: 25874,

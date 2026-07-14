@@ -90,6 +90,13 @@ jobs:
       - name: Install desktop dependencies
         working-directory: apps/desktop
         run: npm ci
+      - name: Prepare deterministic CI build identity
+        shell: bash
+        run: |
+          echo "VEQRI_VERSION=0.1.0-ci.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          echo "VEQRI_COMMIT=${GITHUB_SHA}" >> "$GITHUB_ENV"
+          build_time="$(git show -s --format=%cI "$GITHUB_SHA")"
+          echo "VEQRI_BUILD_TIME=$build_time" >> "$GITHUB_ENV"
       - name: Test native bridge on Linux
         if: runner.os == 'Linux'
         working-directory: apps/desktop/native
@@ -101,11 +108,9 @@ jobs:
       - name: Build self-contained desktop application
         env:
           VEQRI_WEBKIT2GTK_VERSION: ${{ matrix.webkit_version }}
-        run: go run ./cmd/veqri-build --skip-npm-ci desktop
+        run: go run ./cmd/veqri-build --release --skip-npm-ci desktop
       - name: Build Core and CLI
-        run: |
-          go build -trimpath -o build/bin/veqri-core${{ matrix.executable_suffix }} ./cmd/veqri-core
-          go build -trimpath -o build/bin/veqri${{ matrix.executable_suffix }} ./cmd/veqri-cli
+        run: go run ./cmd/veqri-build --release binaries
       - name: Smoke-test packaged runtime
         run: go run ./scripts/release-smoke.go --core build/bin/veqri-core${{ matrix.executable_suffix }} --cli build/bin/veqri${{ matrix.executable_suffix }}
       - name: Smoke-test managed Core inside desktop executable
@@ -115,20 +120,20 @@ jobs:
         env:
           ARTIFACT_NAME: ${{ matrix.artifact }}
           DESKTOP_ENTRY: ${{ matrix.desktop_entry }}
-        run: tar -czf "build/veqri-${ARTIFACT_NAME}.tar.gz" -C build/release "${DESKTOP_ENTRY}"
+        run: tar -czf "build/veqri-${ARTIFACT_NAME}.tar.gz" -C build/release "${DESKTOP_ENTRY}" buildinfo.json
       - name: Package Unix service tools
         if: runner.os != 'Windows'
         env:
           ARTIFACT_NAME: ${{ matrix.artifact }}
           SERVICE_ASSET: ${{ matrix.service_asset }}
-        run: tar -czf "build/veqri-${ARTIFACT_NAME}-service-tools.tar.gz" build/bin/veqri build/bin/veqri-core "${SERVICE_ASSET}" docs/DEPLOYMENT.md
+        run: tar -czf "build/veqri-${ARTIFACT_NAME}-service-tools.tar.gz" build/bin/veqri build/bin/veqri-core build/release/buildinfo.json "${SERVICE_ASSET}" docs/DEPLOYMENT.md
       - name: Package Windows application
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           ARTIFACT_NAME: ${{ matrix.artifact }}
           DESKTOP_ENTRY: ${{ matrix.desktop_entry }}
-        run: Compress-Archive -Path "build/release/$env:DESKTOP_ENTRY" -DestinationPath "build/veqri-$env:ARTIFACT_NAME.zip"
+        run: Compress-Archive -Path "build/release/$env:DESKTOP_ENTRY", "build/release/buildinfo.json" -DestinationPath "build/veqri-$env:ARTIFACT_NAME.zip"
       - name: Package Windows service tools
         if: runner.os == 'Windows'
         shell: pwsh
@@ -139,6 +144,7 @@ jobs:
           $staging = "build/service-tools-$env:ARTIFACT_NAME"
           New-Item -ItemType Directory -Force -Path "$staging/build/bin", "$staging/deploy/windows", "$staging/docs" | Out-Null
           Copy-Item "build/bin/veqri.exe", "build/bin/veqri-core.exe" -Destination "$staging/build/bin"
+          Copy-Item "build/release/buildinfo.json" -Destination "$staging/buildinfo.json"
           Copy-Item -Recurse -Force -Path (Join-Path $env:SERVICE_ASSET '*') -Destination "$staging/deploy/windows"
           Copy-Item "docs/DEPLOYMENT.md" -Destination "$staging/docs/DEPLOYMENT.md"
           Compress-Archive -Path "$staging/*" -DestinationPath "build/veqri-$env:ARTIFACT_NAME-service-tools.zip"

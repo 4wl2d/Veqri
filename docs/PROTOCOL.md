@@ -16,7 +16,7 @@ Version negotiation uses major `1`, minor `0`, and a capability list. Every auth
 
 ## HTTP surfaces
 
-- `/healthz`, `/readyz`: unauthenticated minimal health. `/metrics` is administrator-only.
+- `/healthz`, `/readyz`: unauthenticated minimal health containing the canonical `version`, `commit`, and `build_time`; `/healthz` also reports protocol version and uptime. `/metrics` is administrator-only.
 - `/v1/pairings`: admin pairing creation. `/v1/pairing/claim` and `/v1/pairings/claim` are public one-time claim aliases with shared rolling limits of five admitted attempts per peer IPv4 address or IPv6 `/64`, and thirty globally per minute. Android includes `retain_transcript`; consuming the code, creating the device, and storing that device privacy default are one transaction, so the HTTP 201 response acknowledges all three.
 - `/v1/devices/self/credential-rotation/*`: device-authenticated two-phase credential rotation.
 - `/v1/ask`: administrator or paired-owner requests. `/v1/events` is administrator-only because it assigns local trust.

@@ -19,10 +19,10 @@ Core writes structured JSON logs to stderr. The admin credential source/path is 
 ## Build binaries
 
 ```sh
-mkdir -p build/bin
-go build -trimpath -o build/bin/veqri-core ./cmd/veqri-core
-go build -trimpath -o build/bin/veqri ./cmd/veqri-cli
+go run ./cmd/veqri-build binaries
 ```
+
+This produces the development identity `0.1.0-dev`. For distributable binaries, set `VEQRI_VERSION`, `VEQRI_COMMIT`, and `VEQRI_BUILD_TIME` and add `--release`; incomplete or implicit release metadata is rejected before compilation. The same identity is written to `build/release/buildinfo.json`.
 
 ## Background services
 
@@ -102,7 +102,18 @@ docker build -f deploy/docker/Dockerfile -t veqri-core .
 docker run --rm -v veqri-data:/var/lib/veqri veqri-core
 ```
 
-The image intentionally binds loopback, which is suitable for a same-container client but not host exposure. Explicit TLS/reverse-proxy configuration is required to publish it. Host PC automation is generally better served by the native daemon.
+The default image carries development metadata. A release-metadata image uses the same fail-closed build entry point:
+
+```sh
+docker build -f deploy/docker/Dockerfile \
+  --build-arg VEQRI_RELEASE=true \
+  --build-arg VEQRI_VERSION=0.1.0-rc.1 \
+  --build-arg VEQRI_COMMIT="$(git rev-parse HEAD)" \
+  --build-arg VEQRI_BUILD_TIME="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+  -t veqri-core:0.1.0-rc.1 .
+```
+
+The image embeds that identity in both binaries and `/usr/share/veqri/buildinfo.json`. It intentionally binds loopback, which is suitable for a same-container client but not host exposure. Explicit TLS/reverse-proxy configuration is required to publish it. Host PC automation is generally better served by the native daemon.
 
 ## LAN / remote modes
 

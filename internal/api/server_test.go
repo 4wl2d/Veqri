@@ -1,18 +1,27 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/veqri/veqri/core/persistence"
+	"github.com/veqri/veqri/internal/buildinfo"
 	"github.com/veqri/veqri/internal/config"
 	"github.com/veqri/veqri/internal/managedcore"
 )
 
 func TestHealthReturnsManagedCoreOwnershipProof(t *testing.T) {
+	info, err := buildinfo.Parse("1.2.3-rc.1", "0123456789abcdef0123456789abcdef01234567", "2026-07-14T12:34:56Z")
+	if err != nil {
+		t.Fatal(err)
+	}
 	server := &Server{
 		config:    config.Config{ManagedCoreOwnerToken: "managed-owner-token-0123456789abcdef"},
+		buildInfo: info,
 		startedAt: time.Now(),
 	}
 	response := httptest.NewRecorder()
@@ -20,6 +29,35 @@ func TestHealthReturnsManagedCoreOwnershipProof(t *testing.T) {
 	want := managedcore.OwnerProof(server.config.ManagedCoreOwnerToken)
 	if got := response.Header().Get(managedcore.OwnerTokenHeader); got != want {
 		t.Fatalf("managed owner header = %q, want %q", got, want)
+	}
+	assertBuildInfoResponse(t, response.Body.Bytes(), "ok", info)
+}
+
+func TestReadyReturnsBuildInfo(t *testing.T) {
+	ctx := context.Background()
+	store, err := persistence.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	info := buildinfo.Development()
+	server := &Server{store: store, buildInfo: info}
+	response := httptest.NewRecorder()
+	server.handleReady(response, httptest.NewRequest("GET", "/readyz", nil))
+	assertBuildInfoResponse(t, response.Body.Bytes(), "ready", info)
+}
+
+func assertBuildInfoResponse(t *testing.T, raw []byte, status string, want buildinfo.Info) {
+	t.Helper()
+	var response struct {
+		Status string `json:"status"`
+		buildinfo.Info
+	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Status != status || response.Info != want {
+		t.Fatalf("response = %+v, want status %q and build info %+v", response, status, want)
 	}
 }
 

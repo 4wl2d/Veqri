@@ -245,7 +245,8 @@ func (s *Server) desktopSnapshot(ctx context.Context) (map[string]any, error) {
 	return map[string]any{
 		"protocol_version": 1, "revision": revision, "generated_at": now,
 		"core": map[string]any{
-			"status": coreStatus, "version": "0.1.0", "protocol_version": 1,
+			"status": coreStatus, "version": s.buildInfo.Version, "commit": s.buildInfo.Commit,
+			"build_time": s.buildInfo.BuildTime, "protocol_version": 1,
 			"started_at": s.startedAt, "uptime_seconds": int64(time.Since(s.startedAt).Seconds()),
 			"bind_address": s.config.Address, "service_mode": "foreground",
 			"database": map[string]any{"status": coreStatus, "path": s.config.DatabasePath,

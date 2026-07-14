@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -9,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/veqri/veqri/internal/buildinfo"
 )
 
 func TestRunHelpAliasesSucceedWithoutClientConfiguration(t *testing.T) {
@@ -19,6 +22,41 @@ func TestRunHelpAliasesSucceedWithoutClientConfiguration(t *testing.T) {
 				t.Fatalf("run(%q): %v", argument, err)
 			}
 		})
+	}
+}
+
+func TestRunVersionSucceedsWithoutClientConfiguration(t *testing.T) {
+	t.Setenv("VEQRI_URL", "://invalid")
+	if err := run([]string{"version", "--json"}); err != nil {
+		t.Fatalf("run(version --json): %v", err)
+	}
+}
+
+func TestPrintVersionFormatsHumanAndJSONOutput(t *testing.T) {
+	info := buildinfo.Development()
+	var human bytes.Buffer
+	if err := printVersion(nil, &human, info); err != nil {
+		t.Fatalf("printVersion(human): %v", err)
+	}
+	if got, want := human.String(), buildinfo.DevelopmentVersion+"\n"; got != want {
+		t.Fatalf("human version = %q, want %q", got, want)
+	}
+
+	var machine bytes.Buffer
+	if err := printVersion([]string{"--json"}, &machine, info); err != nil {
+		t.Fatalf("printVersion(json): %v", err)
+	}
+	var decoded buildinfo.Info
+	if err := json.Unmarshal(machine.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode version JSON: %v", err)
+	}
+	if decoded != info {
+		t.Fatalf("JSON version = %+v, want %+v", decoded, info)
+	}
+	for _, arguments := range [][]string{{"extra"}, {"--unknown"}, {"--json", "extra"}} {
+		if err := printVersion(arguments, &bytes.Buffer{}, info); err == nil {
+			t.Errorf("printVersion(%q) unexpectedly succeeded", arguments)
+		}
 	}
 }
 
@@ -97,6 +135,12 @@ func TestShellUsageDocumentsWaitFlag(t *testing.T) {
 	err := (&client{}).shell(context.Background(), nil)
 	if err == nil || !strings.Contains(err.Error(), shellSyntax) {
 		t.Fatalf("empty shell arguments error = %v", err)
+	}
+}
+
+func TestUsageDocumentsVersionJSON(t *testing.T) {
+	if !strings.Contains(usageText, "veqri version [--json]") {
+		t.Fatal("global usage does not document version --json")
 	}
 }
 

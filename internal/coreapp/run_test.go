@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/veqri/veqri/internal/buildinfo"
 )
 
 func TestRunReservesListenerBeforeCreatingDatabase(t *testing.T) {
@@ -30,7 +32,7 @@ func TestRunReservesListenerBeforeCreatingDatabase(t *testing.T) {
 	t.Setenv("VEQRI_KEYCHAIN_DISABLED", "true")
 	t.Setenv("VEQRI_WORKSPACES", workspace)
 
-	err = Run(context.Background(), "test")
+	err = Run(context.Background(), buildinfo.Development())
 	if err == nil || !strings.Contains(err.Error(), "listen on") {
 		t.Fatalf("Run() error = %v, want listener collision", err)
 	}

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/veqri/veqri/internal/buildinfo"
 	"github.com/veqri/veqri/internal/managedcore"
 )
 
@@ -135,7 +136,26 @@ func runSmoke(config smokeConfig) error {
 	if err := waitUntilReady(ctx, httpClient, baseURL, coreDone, &coreErrors); err != nil {
 		return err
 	}
-	if err := runCLI(ctx, config.cliPath, environment, "status", "status", "ok"); err != nil {
+	versionPayload, err := runCLIJSON(ctx, config.cliPath, environment, "version", "--json")
+	if err != nil {
+		return err
+	}
+	cliBuildInfo, err := buildInfoFromPayload("CLI version", versionPayload)
+	if err != nil {
+		return err
+	}
+	healthPayload, err := runCLIJSON(ctx, config.cliPath, environment, "status")
+	if err != nil {
+		return err
+	}
+	if err := requireJSONField("CLI status", healthPayload, "status", "ok"); err != nil {
+		return err
+	}
+	healthBuildInfo, err := buildInfoFromPayload("Core health", healthPayload)
+	if err != nil {
+		return err
+	}
+	if err := requireMatchingBuildInfo(cliBuildInfo, healthBuildInfo, "CLI", "Core health"); err != nil {
 		return err
 	}
 	if err := runCLI(ctx, config.cliPath, environment, "diagnostics", "database_ok", true); err != nil {
@@ -148,6 +168,17 @@ func runSmoke(config smokeConfig) error {
 	}
 	if protocol, ok := snapshot["protocol_version"].(float64); !ok || protocol != 1 {
 		return fmt.Errorf("desktop snapshot protocol_version = %v, want 1", snapshot["protocol_version"])
+	}
+	core, ok := snapshot["core"].(map[string]any)
+	if !ok {
+		return errors.New("desktop snapshot is missing core build metadata")
+	}
+	snapshotBuildInfo, err := buildInfoFromPayload("desktop snapshot Core", core)
+	if err != nil {
+		return err
+	}
+	if err := requireMatchingBuildInfo(cliBuildInfo, snapshotBuildInfo, "CLI", "desktop snapshot Core"); err != nil {
+		return err
 	}
 
 	action := map[string]any{
@@ -258,24 +289,74 @@ func waitUntilReady(ctx context.Context, client *http.Client, baseURL string, co
 }
 
 func runCLI(ctx context.Context, cliPath string, environment []string, command, requiredField string, requiredValue any) error {
+	payload, err := runCLIJSON(ctx, cliPath, environment, command)
+	if err != nil {
+		return err
+	}
+	return requireJSONField("CLI "+command, payload, requiredField, requiredValue)
+}
+
+func runCLIJSON(ctx context.Context, cliPath string, environment []string, arguments ...string) (map[string]any, error) {
 	cliContext, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	cliCommand := exec.CommandContext(cliContext, cliPath, command)
+	cliCommand := exec.CommandContext(cliContext, cliPath, arguments...)
 	cliCommand.Env = environment
 	output, err := cliCommand.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("run CLI %s: %w: %s", command, err, boundedText(string(output), 2<<10))
+		return nil, fmt.Errorf("run CLI %s: %w: %s", strings.Join(arguments, " "), err, boundedText(string(output), 2<<10))
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(output, &payload); err != nil {
-		return fmt.Errorf("decode CLI %s output: %w", command, err)
+		return nil, fmt.Errorf("decode CLI %s output: %w", strings.Join(arguments, " "), err)
 	}
+	return payload, nil
+}
+
+func requireJSONField(label string, payload map[string]any, requiredField string, requiredValue any) error {
 	value, exists := payload[requiredField]
 	if !exists {
-		return fmt.Errorf("CLI %s output is missing %q", command, requiredField)
+		return fmt.Errorf("%s output is missing %q", label, requiredField)
 	}
 	if requiredValue != nil && value != requiredValue {
-		return fmt.Errorf("CLI %s %s = %v, want %v", command, requiredField, value, requiredValue)
+		return fmt.Errorf("%s %s = %v, want %v", label, requiredField, value, requiredValue)
+	}
+	return nil
+}
+
+func buildInfoFromPayload(label string, payload map[string]any) (buildinfo.Info, error) {
+	field := func(name string) (string, error) {
+		value, ok := payload[name].(string)
+		if !ok || value == "" {
+			return "", fmt.Errorf("%s is missing string %q", label, name)
+		}
+		return value, nil
+	}
+	version, err := field("version")
+	if err != nil {
+		return buildinfo.Info{}, err
+	}
+	commit, err := field("commit")
+	if err != nil {
+		return buildinfo.Info{}, err
+	}
+	buildTime, err := field("build_time")
+	if err != nil {
+		return buildinfo.Info{}, err
+	}
+	raw := buildinfo.Info{Version: version, Commit: commit, BuildTime: buildTime}
+	info, err := buildinfo.Parse(raw.Version, raw.Commit, raw.BuildTime)
+	if err != nil {
+		return buildinfo.Info{}, fmt.Errorf("%s contains invalid build metadata: %w", label, err)
+	}
+	if info != raw {
+		return buildinfo.Info{}, fmt.Errorf("%s build metadata is not in canonical form", label)
+	}
+	return raw, nil
+}
+
+func requireMatchingBuildInfo(expected, actual buildinfo.Info, expectedLabel, actualLabel string) error {
+	if actual != expected {
+		return fmt.Errorf("%s build metadata %+v does not match %s %+v", actualLabel, actual, expectedLabel, expected)
 	}
 	return nil
 }

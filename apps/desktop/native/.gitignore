@@ -1,3 +1,7 @@
 dist/*
 !dist/.keep
 /native
+/native.exe
+/build/bin/
+/build/windows/icon.ico
+/build/windows/info.json

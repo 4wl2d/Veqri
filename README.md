@@ -60,7 +60,17 @@ Build the self-contained application for the current desktop OS from the reposit
 go run ./cmd/veqri-build
 ```
 
-The output is one launchable artifact under `build/release`: `Veqri.app` on macOS, `veqri-desktop.exe` on Windows, or `veqri-desktop` on Linux. The desktop executable contains both the Wails UI and Core. On launch it starts its own managed Core process from the same executable, waits for readiness, proves child ownership with an ephemeral nonce, verifies credential compatibility, and injects the local credential. Closing the app stops that managed Core; an unexpected Core exit closes the owning UI instead of leaving it connected to a replaceable port. If another Core already owns the loopback origin, managed mode fails safely; set `VEQRI_DESKTOP_CORE_MODE=external` only when that existing process is explicitly trusted and managed elsewhere.
+The output is one launchable artifact under `build/release`: `Veqri.app` on macOS, `veqri-desktop.exe` on Windows, or `veqri-desktop` on Linux. `build/release/buildinfo.json` records the exact identity embedded in the artifact. Ordinary local builds use `0.1.0-dev`; an official release build must opt in with `--release` and provide a strict SemVer, full commit, and RFC3339 build time. The desktop executable contains both the Wails UI and Core. On launch it starts its own managed Core process from the same executable, waits for readiness, proves child ownership with an ephemeral nonce, verifies credential compatibility, and injects the local credential. Closing the app stops that managed Core; an unexpected Core exit closes the owning UI instead of leaving it connected to a replaceable port. If another Core already owns the loopback origin, managed mode fails safely; set `VEQRI_DESKTOP_CORE_MODE=external` only when that existing process is explicitly trusted and managed elsewhere.
+
+For a release-metadata build, use one identity for Core, CLI, and desktop:
+
+```sh
+export VEQRI_VERSION=0.1.0-rc.1
+export VEQRI_COMMIT="$(git rev-parse HEAD)"
+export VEQRI_BUILD_TIME="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+go run ./cmd/veqri-build --release binaries
+go run ./cmd/veqri-build --release desktop
+```
 
 Build the Android client without exporting an SDK path manually:
 
@@ -70,7 +80,7 @@ go run ./cmd/veqri-build android
 
 This locates Android SDK Platform 37 in `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or the standard macOS/Linux/Windows SDK directory and writes `build/release/Veqri-android-debug.apk`. The APK uses the real Core transport and defaults to `http://10.0.2.2:7342` for an emulator. It is debug-signed and is not a store release.
 
-Build both artifacts available on the current host:
+Build the standalone binaries plus both application artifacts available on the current host. The combined `all` target is development-only; Android release identity is outside this builder:
 
 ```sh
 go run ./cmd/veqri-build all
@@ -118,9 +128,8 @@ A non-loopback bind is rejected unless both `VEQRI_TLS_CERT_FILE` and `VEQRI_TLS
 ## Build and use the CLI
 
 ```sh
-mkdir -p build/bin
-go build -o build/bin/veqri ./cmd/veqri-cli
-go build -o build/bin/veqri-core ./cmd/veqri-core
+go run ./cmd/veqri-build binaries
+./build/bin/veqri version --json
 ./build/bin/veqri status
 ./build/bin/veqri ask --wait "Ask the coding agent to inspect the repository"
 ./build/bin/veqri task list
