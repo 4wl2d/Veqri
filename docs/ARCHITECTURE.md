@@ -62,7 +62,9 @@ Call control and dialog state do not depend on acoustic transport. The default `
 
 ## Data ownership
 
-SQLite on the PC is authoritative. Android Room is only an offline cache. Long-term memory is not enabled. With a positive `VEQRI_RETENTION_DAYS`, Core asynchronously applies a rolling UTC cutoff at startup and every six hours: expired turns and processed event content are removed or scrubbed, safe terminal task/tool/approval/delivery content is scrubbed, and audit rows use the same cutoff. Active or operationally unresolved graphs are excluded. `0` disables automatic expiry. Automatic expiry preserves each conversation's future-retention flag; explicit per-conversation deletion remains the operation that disables future retention.
+SQLite on the PC is authoritative. Android Room is only an offline cache. Long-term memory is not enabled. With a positive `VEQRI_RETENTION_DAYS`, Core asynchronously applies a rolling UTC cutoff at startup and every six hours: expired turns and processed event content are removed or scrubbed, safe terminal task/tool/approval/delivery content is scrubbed, and audit rows use the same cutoff. Active or operationally unresolved graphs are excluded. `0` disables automatic content expiry. A separate fixed maintenance pass still removes pairing sessions expired for more than 24 hours and completed desktop action results older than seven days; its two-table whitelist cannot alter unresolved work.
+
+Desktop backup is a persistence operation rather than a raw file copy: SQLite writes a same-directory hidden temporary snapshot, Core opens that snapshot read-only for `quick_check`, syncs it, and atomically publishes a unique final file. Backup and diagnostic artifacts stay under private Core-owned directories and are never included in live-database retention sweeps.
 
 ## Decisions
 

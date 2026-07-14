@@ -24,6 +24,7 @@ import (
 	"github.com/veqri/veqri/internal/auth"
 	"github.com/veqri/veqri/internal/config"
 	"github.com/veqri/veqri/internal/secrets"
+	"github.com/veqri/veqri/internal/securefs"
 	"github.com/veqri/veqri/internal/stream"
 	"github.com/veqri/veqri/tools/shell"
 )
@@ -45,6 +46,14 @@ func Run(ctx context.Context, version string) error {
 		return fmt.Errorf("listen on %s: %w", cfg.Address, err)
 	}
 	defer listener.Close()
+	if err := securefs.EnsurePrivateDir(cfg.DataDir); err != nil {
+		return fmt.Errorf("prepare data directory: %w", err)
+	}
+	for _, name := range []string{"backups", "diagnostics"} {
+		if err := securefs.EnsurePrivateTreeIfExists(filepath.Join(cfg.DataDir, name)); err != nil {
+			return fmt.Errorf("secure existing %s artifacts: %w", name, err)
+		}
+	}
 	adminToken, tokenPath, err := auth.LoadOrCreateAdminToken(cfg.DataDir, cfg.AuthToken)
 	if err != nil {
 		return err

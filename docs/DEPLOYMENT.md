@@ -12,6 +12,8 @@ go run ./cmd/veqri-core
 
 `VEQRI_RETENTION_DAYS=N` enables a non-blocking startup sweep and six-hour periodic sweeps for SQLite transcript/event/safe terminal-task content and audit rows strictly older than the rolling UTC cutoff. Set it to `0` to retain indefinitely. Active and unresolved task work is deferred, and automatic expiry does not disable future retention for a conversation.
 
+Fixed storage housekeeping is independent of `VEQRI_RETENTION_DAYS`: at startup and every six hours Core removes pairing sessions expired for more than 24 hours and completed desktop action results older than seven days. It does not delete in-progress desktop actions or task/tool/delivery records. On Unix, startup also enforces `0700` on the data directory and `0600` on the database and other private artifacts; do not loosen these modes after launch. Windows deployments should keep the data directory restricted to the dedicated user/service account through its ACL.
+
 Core writes structured JSON logs to stderr. The admin credential source/path is logged, never its value. Configure log rotation and deletion in the process supervisor; SQLite retention does not control stderr logs.
 
 ## Build binaries
@@ -115,4 +117,4 @@ There is no Veqri-hosted account or cloud dependency.
 
 ## Backup and upgrade
 
-Create a desktop backup before upgrades. The backup is a consistent plain SQLite file, not an encrypted archive: store it on an encrypted volume or protect it with the operator's backup encryption. Run the new binary once in foreground; embedded migrations are transactional and versioned. Do not downgrade across a schema migration without restoring a matching backup. `PRAGMA quick_check` is exposed through diagnostics/tests.
+Create a desktop backup before upgrades. Core builds it with `VACUUM INTO` under a hidden temporary name, validates the copy with read-only `PRAGMA quick_check`, fsyncs it, and only then atomically publishes the final `0600` `.db` file. The backup is a consistent plain SQLite file, not an encrypted archive: store it on an encrypted volume or protect it with the operator's backup encryption. Run the new binary once in foreground; embedded migrations are transactional and versioned. Do not downgrade across a schema migration without restoring a matching backup. `PRAGMA quick_check` is also exposed through diagnostics/tests.

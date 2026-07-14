@@ -62,7 +62,7 @@ type Server struct {
 	deviceSockets   map[string]map[*websocket.Conn]struct{}
 }
 
-const retentionSweepInterval = 6 * time.Hour
+const maintenanceSweepInterval = 6 * time.Hour
 
 func NewServer(cfg config.Config, store *persistence.Store, adminToken string,
 	runtime *agents.Runtime, registry *agents.Registry, policyEngine *policy.Engine,
@@ -93,7 +93,11 @@ type voiceDeliveryJob struct {
 
 func (s *Server) StartBackground(ctx context.Context) {
 	s.recoverVoiceRouting(ctx)
-	s.startRetentionSweeps(ctx)
+	// Fixed-lifetime records are cleaned before startup returns so stale
+	// pairing hashes and cached desktop results are not carried into the
+	// running process. Content retention remains asynchronous below.
+	s.applyStorageMaintenance(ctx, time.Now().UTC())
+	s.startMaintenanceSweeps(ctx)
 	go s.voiceDeliveryLoop(ctx)
 	go s.recoverPendingEvents(ctx)
 	go func() {
@@ -104,28 +108,40 @@ func (s *Server) StartBackground(ctx context.Context) {
 	}()
 }
 
-func (s *Server) startRetentionSweeps(ctx context.Context) {
-	if _, enabled := retentionCutoff(time.Now().UTC(), s.config.RetentionDays); !enabled {
+func (s *Server) startMaintenanceSweeps(ctx context.Context) {
+	now := time.Now().UTC()
+	if cutoff, enabled := retentionCutoff(now, s.config.RetentionDays); enabled {
+		// Preserve the existing non-blocking startup behavior for the larger
+		// content-retention transaction.
+		go s.applyRetentionSweep(ctx, cutoff, now)
+	} else {
 		s.logger.Info("automatic retention disabled", "retention_days", 0)
-		return
 	}
+	ticker := time.NewTicker(maintenanceSweepInterval)
 	go func() {
-		if cutoff, ok := retentionCutoff(time.Now().UTC(), s.config.RetentionDays); ok {
-			s.applyRetentionSweep(ctx, cutoff)
-		}
-		ticker := time.NewTicker(retentionSweepInterval)
 		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
+		s.runPeriodicMaintenance(ctx, ticker.C)
+	}()
+}
+
+// runPeriodicMaintenance accepts its tick channel so lifecycle tests can
+// exercise complete ticks deterministically without waiting six hours.
+func (s *Server) runPeriodicMaintenance(ctx context.Context, ticks <-chan time.Time) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now, ok := <-ticks:
+			if !ok {
 				return
-			case now := <-ticker.C:
-				if nextCutoff, ok := retentionCutoff(now.UTC(), s.config.RetentionDays); ok {
-					s.applyRetentionSweep(ctx, nextCutoff)
-				}
+			}
+			now = now.UTC()
+			s.applyStorageMaintenance(ctx, now)
+			if cutoff, enabled := retentionCutoff(now, s.config.RetentionDays); enabled {
+				s.applyRetentionSweep(ctx, cutoff, now)
 			}
 		}
-	}()
+	}
 }
 
 func retentionCutoff(now time.Time, retentionDays int) (time.Time, bool) {
@@ -135,8 +151,20 @@ func retentionCutoff(now time.Time, retentionDays int) (time.Time, bool) {
 	return now.UTC().AddDate(0, 0, -retentionDays), true
 }
 
-func (s *Server) applyRetentionSweep(ctx context.Context, cutoff time.Time) {
-	result, err := s.store.ApplyRetentionSweep(ctx, cutoff, time.Now().UTC())
+func (s *Server) applyStorageMaintenance(ctx context.Context, sweptAt time.Time) {
+	result, err := s.store.ApplyStorageMaintenance(ctx, sweptAt)
+	if err != nil {
+		s.logger.Error("automatic storage maintenance failed", "error", err)
+		return
+	}
+	s.logger.Info("automatic storage maintenance completed",
+		"swept_at", result.SweptAt,
+		"pairing_sessions_deleted", result.PairingSessionsDeleted,
+		"desktop_action_results_deleted", result.DesktopActionResultsDeleted)
+}
+
+func (s *Server) applyRetentionSweep(ctx context.Context, cutoff, sweptAt time.Time) {
+	result, err := s.store.ApplyRetentionSweep(ctx, cutoff, sweptAt)
 	if err != nil {
 		s.logger.Error("automatic retention sweep failed", "error", err)
 		return

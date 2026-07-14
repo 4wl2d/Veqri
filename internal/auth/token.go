@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/veqri/veqri/internal/securefs"
 	"github.com/zalando/go-keyring"
 )
 
@@ -36,6 +37,13 @@ func New(adminToken string, devices DeviceVerifier) *Authenticator {
 }
 
 func LoadOrCreateAdminToken(dataDir, configured string) (token string, tokenPath string, err error) {
+	if err := securefs.EnsurePrivateDir(dataDir); err != nil {
+		return "", "", fmt.Errorf("create data directory: %w", err)
+	}
+	path := filepath.Join(dataDir, "admin.token")
+	if err := securefs.EnsurePrivateFileIfExists(path); err != nil {
+		return "", "", fmt.Errorf("secure admin token: %w", err)
+	}
 	if configured != "" {
 		if len(configured) < 32 {
 			return "", "", errors.New("VEQRI_AUTH_TOKEN must contain at least 32 characters")
@@ -55,24 +63,17 @@ func LoadOrCreateAdminToken(dataDir, configured string) (token string, tokenPath
 			// to the permission-restricted fallback instead of preventing start.
 		}
 	}
-	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		return "", "", fmt.Errorf("create data directory: %w", err)
-	}
-	path := filepath.Join(dataDir, "admin.token")
-	if existing, readErr := os.ReadFile(path); readErr == nil {
+	if existing, secureErr := securefs.ReadPrivateFile(path); secureErr == nil {
 		token = strings.TrimSpace(string(existing))
 		if len(token) < 32 {
 			return "", "", errors.New("existing admin token is too short")
-		}
-		if err := os.Chmod(path, 0o600); err != nil {
-			return "", "", fmt.Errorf("secure token file: %w", err)
 		}
 		if !keychainDisabled() && keyring.Set("ai.veqri", "admin-token", token) == nil {
 			return token, "os-keychain:ai.veqri/admin-token (fallback file retained)", nil
 		}
 		return token, path + " (0600 fallback)", nil
-	} else if !errors.Is(readErr, os.ErrNotExist) {
-		return "", "", fmt.Errorf("read admin token: %w", readErr)
+	} else if !errors.Is(secureErr, os.ErrNotExist) {
+		return "", "", fmt.Errorf("secure admin token: %w", secureErr)
 	}
 	token, err = RandomToken(32)
 	if err != nil {
@@ -92,12 +93,22 @@ func LoadOrCreateAdminToken(dataDir, configured string) (token string, tokenPath
 	if err = file.Close(); err != nil {
 		return "", "", fmt.Errorf("close admin token: %w", err)
 	}
+	if err = securefs.EnsurePrivateFile(path); err != nil {
+		return "", "", fmt.Errorf("secure admin token: %w", err)
+	}
 	return token, path + " (0600 fallback; OS keychain unavailable)", nil
 }
 
 // ReadAdminToken resolves the same preferred credential sources as Core
 // without creating a new token. It is used by local CLI/native companions.
 func ReadAdminToken(dataDir string) (string, string, error) {
+	if err := securefs.EnsurePrivateDir(dataDir); err != nil {
+		return "", "", fmt.Errorf("secure data directory: %w", err)
+	}
+	path := filepath.Join(dataDir, "admin.token")
+	if err := securefs.EnsurePrivateFileIfExists(path); err != nil {
+		return "", "", fmt.Errorf("secure admin token: %w", err)
+	}
 	if configured := os.Getenv("VEQRI_AUTH_TOKEN"); configured != "" {
 		return configured, "environment", nil
 	}
@@ -107,10 +118,9 @@ func ReadAdminToken(dataDir string) (string, string, error) {
 			return stored, "os-keychain:ai.veqri/admin-token", nil
 		}
 	}
-	path := filepath.Join(dataDir, "admin.token")
-	raw, err := os.ReadFile(path)
+	raw, err := securefs.ReadPrivateFile(path)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("read admin token: %w", err)
 	}
 	return strings.TrimSpace(string(raw)), path + " (0600 fallback)", nil
 }

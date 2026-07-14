@@ -11,6 +11,7 @@ This repository is an implementation, not only a design. The deterministic defau
 | Core HTTP/WebSocket APIs, SQLite WAL state, migrations, event dedupe, task workers, cancellation, recovery, audit | Operational |
 | Versioned Protobuf/gRPC contracts | Generated from one canonical schema; the running MVP edge is HTTP/WebSocket and a live gRPC listener remains an adapter gap |
 | Rolling SQLite content/audit retention | Operational; `VEQRI_RETENTION_DAYS=0` retains indefinitely, positive values sweep asynchronously at startup and every six hours |
+| Private storage maintenance and SQLite backup | Operational; private directories/files are permission-restricted, transient pairing/desktop results are cleaned on a fixed schedule, and backups are integrity-checked before atomic publication |
 | Deterministic general/planner/coding/research/automation agents and result synthesizer | Operational, explicitly simulated domain work |
 | Android pairing, authenticated command/event stream, conversation/tasks/approvals/call UI, Room/DataStore/Keystore | Operational |
 | Android acoustic WebRTC media | Interface and SDP/ICE boundary implemented; checked-in provider is a clearly labelled no-audio simulator |
@@ -97,7 +98,7 @@ Generated Go code is committed so normal builds do not depend on a generator. Re
 
 ## Start Veqri Core
 
-The secure default binds only to `127.0.0.1:7342`. The first start stores the admin credential in the OS keychain (or a clearly reported `~/.veqri/admin.token` `0600` fallback on headless systems) and creates `~/.veqri/veqri.db`.
+The secure default binds only to `127.0.0.1:7342`. The first start stores the admin credential in the OS keychain (or a clearly reported `~/.veqri/admin.token` `0600` fallback on headless systems) and creates `~/.veqri/veqri.db`. On Unix, Core enforces `0700` on its data/artifact directories and `0600` on the SQLite database, fallback token, backups, and diagnostic exports.
 
 ```sh
 go run ./cmd/veqri-core

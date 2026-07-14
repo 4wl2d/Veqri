@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -39,13 +40,8 @@ func TestLoadOrCreateAdminTokenCreatesPrivateReusableFile(t *testing.T) {
 	if len(token) < 32 || !strings.Contains(path, tokenFile) {
 		t.Fatalf("token/path = (%q, %q)", token, path)
 	}
-	info, err := os.Stat(tokenFile)
-	if err != nil {
-		t.Fatalf("stat token: %v", err)
-	}
-	if got := info.Mode().Perm(); got != 0o600 {
-		t.Fatalf("token permissions = %#o, want 0600", got)
-	}
+	assertPrivatePermissions(t, dataDir, 0o700)
+	assertPrivatePermissions(t, tokenFile, 0o600)
 	contents, err := os.ReadFile(tokenFile)
 	if err != nil {
 		t.Fatalf("read token: %v", err)
@@ -57,6 +53,9 @@ func TestLoadOrCreateAdminTokenCreatesPrivateReusableFile(t *testing.T) {
 	if err := os.Chmod(tokenFile, 0o644); err != nil {
 		t.Fatalf("loosen token permissions for reload test: %v", err)
 	}
+	if err := os.Chmod(dataDir, 0o755); err != nil {
+		t.Fatalf("loosen data directory permissions for reload test: %v", err)
+	}
 	reloaded, reloadedPath, err := LoadOrCreateAdminToken(dataDir, "")
 	if err != nil {
 		t.Fatalf("LoadOrCreateAdminToken(reload): %v", err)
@@ -64,10 +63,32 @@ func TestLoadOrCreateAdminTokenCreatesPrivateReusableFile(t *testing.T) {
 	if reloaded != token || !strings.Contains(reloadedPath, tokenFile) {
 		t.Fatalf("reloaded token/path = (%q, %q), want original", reloaded, reloadedPath)
 	}
-	info, err = os.Stat(tokenFile)
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("reload did not restore 0600 permissions: info=%v err=%v", info, err)
+	assertPrivatePermissions(t, dataDir, 0o700)
+	assertPrivatePermissions(t, tokenFile, 0o600)
+}
+
+func TestReadAdminTokenRepairsFallbackPermissions(t *testing.T) {
+	t.Setenv("VEQRI_AUTH_TOKEN", "")
+	t.Setenv("VEQRI_KEYCHAIN_DISABLED", "true")
+	dataDir := t.TempDir()
+	if err := os.Chmod(dataDir, 0o755); err != nil {
+		t.Fatal(err)
 	}
+	path := filepath.Join(dataDir, "admin.token")
+	const token = "read-admin-token-0123456789abcdef"
+	if err := os.WriteFile(path, []byte(token+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, source, err := ReadAdminToken(dataDir)
+	if err != nil {
+		t.Fatalf("ReadAdminToken(): %v", err)
+	}
+	if got != token || !strings.Contains(source, path) {
+		t.Fatalf("ReadAdminToken() = (%q, %q), want token and fallback path", got, source)
+	}
+	assertPrivatePermissions(t, dataDir, 0o700)
+	assertPrivatePermissions(t, path, 0o600)
 }
 
 func TestLoadOrCreateAdminTokenValidatesConfiguredAndExistingTokens(t *testing.T) {
@@ -75,11 +96,21 @@ func TestLoadOrCreateAdminTokenValidatesConfiguredAndExistingTokens(t *testing.T
 	if _, _, err := LoadOrCreateAdminToken(t.TempDir(), "too-short"); err == nil {
 		t.Fatal("short configured admin token was accepted")
 	}
+	configuredDataDir := t.TempDir()
+	if err := os.Chmod(configuredDataDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fallbackPath := filepath.Join(configuredDataDir, "admin.token")
+	if err := os.WriteFile(fallbackPath, []byte("old-fallback-token-0123456789abcdef\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	configured := "0123456789abcdef0123456789abcdef"
-	token, path, err := LoadOrCreateAdminToken(t.TempDir(), configured)
+	token, path, err := LoadOrCreateAdminToken(configuredDataDir, configured)
 	if err != nil || token != configured || path != "environment" {
 		t.Fatalf("configured token result = (%q, %q, %v)", token, path, err)
 	}
+	assertPrivatePermissions(t, configuredDataDir, 0o700)
+	assertPrivatePermissions(t, fallbackPath, 0o600)
 
 	dataDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dataDir, "admin.token"), []byte("short\n"), 0o600); err != nil {
@@ -148,5 +179,19 @@ func TestBearerTokenParsing(t *testing.T) {
 		if got := BearerToken(tt.header); got != tt.want {
 			t.Errorf("BearerToken(%q) = %q, want %q", tt.header, got, tt.want)
 		}
+	}
+}
+
+func assertPrivatePermissions(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != want.Perm() {
+		t.Fatalf("%s permissions = %#o, want %#o", path, got, want.Perm())
 	}
 }
