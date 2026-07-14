@@ -4,7 +4,7 @@
 
 The app uses Kotlin, Compose Material 3, coroutines/Flow, immutable ViewModel render models, Room cache, DataStore preferences, and Android Keystore credentials. Core remains authoritative for conversations, tasks, approvals, and audit.
 
-Pinned build matrix: AGP 9.2.1, Gradle 9.4.1, Kotlin/Compose plugin 2.3.21, compile SDK 37, target SDK 36, Compose BOM 2026.06.00, Activity 1.13.0, Lifecycle 2.10.0, Room 2.8.4, DataStore 1.2.1, and OkHttp 5.3.2. The direct pins are in `apps/android/app/build.gradle.kts`; resolved configurations are locked in `apps/android/app/gradle.lockfile`.
+Pinned build matrix: AGP 9.2.1, Gradle 9.4.1, Kotlin/Compose plugin 2.3.21, compile SDK 37, target SDK 36, Compose BOM 2026.06.00, Activity 1.13.0, Lifecycle 2.10.0, Room 2.8.4, DataStore 1.2.1, OkHttp 5.3.2, Protobuf Gradle plugin 0.10.0, and `protoc`/`protobuf-javalite` 4.35.1. Direct pins are in `apps/android/build.gradle.kts`, `apps/android/app/build.gradle.kts`, and `apps/android/protocol/build.gradle.kts`; resolved configurations are locked in the app and protocol `gradle.lockfile` files.
 
 ## Pairing and transport
 
@@ -15,6 +15,8 @@ Pinned build matrix: AGP 9.2.1, Gradle 9.4.1, Kotlin/Compose plugin 2.3.21, comp
 5. Android opens `/v1/device/events` using bearer auth, device ID, and `veqri.v1`.
 
 Commands are never retried by the live transport because they may cause effects. Reconnect has bounded exponential delay. A revoked device receives WebSocket close code 4003 and must pair again.
+
+`protocol/proto/veqri/v1/device.proto` is a self-contained projection of the Android commands, authoritative snapshot, and events. The public wire remains the existing flat, snake-case JSON contract. The separate `:protocol` Java 17 module generates Java Lite messages, and `DeviceJsonCodec` is the only production-code boundary that imports them; repository, ViewModel, and Compose state remain immutable app-owned models.
 
 Transcript-retention changes wait for Core's correlated commit result. When retention is disabled, Android scrubs/redacts Room before attempting the fallible DataStore write. On every paired process restart it sanitizes cached content before loading UI state and waits for a socket-generation-matched authoritative snapshot, so stale local preferences or delayed events cannot disclose an older transcript while Core is offline.
 
@@ -32,7 +34,7 @@ Official constraints: [foreground-service background starts](https://developer.a
 
 The app contains a WebRTC-compatible offer/answer/ICE engine boundary. Release builds do not silently substitute an unreviewed Maven SDK: the checked-in simulator carries no acoustic media and says so in UI. See `docs/VOICE.md` for enabling a reviewed provider.
 
-Final answer playback is independently operational through Android's installed `TextToSpeech` engine. Core emits one bounded `tts.speak` message containing the concise spoken result; server-side synthetic chunks update progress only and are never replayed as separate utterances. The adapter selects an installed voice that declares it does not require a network connection, keeps response text out of logs and utterance IDs, reports missing voice data safely, and stops playback before sending the durable barge-in command. Install offline voice data for the device language if Android reports no suitable voice.
+Final answer playback is independently operational through Android's installed `TextToSpeech` engine. Core emits one `tts.speak` message containing a concise spoken result of at most 12,288 UTF-8 bytes; Android enforces the same byte contract before constructing the generated message and again at playback, without splitting a Unicode code point. Server-side synthetic chunks update progress only and are never replayed as separate utterances. The platform adapter's per-utterance splitting is separate from that logical-message limit. The adapter selects an installed voice that declares it does not require a network connection, keeps response text out of logs and utterance IDs, reports missing voice data safely, and stops playback before sending the durable barge-in command. Install offline voice data for the device language if Android reports no suitable voice.
 
 Approval cards show the exact canonical invocation JSON, requested permission scopes, policy reason, risk, and expiry before enabling the single-use decision. Live approval events and reconnect snapshots use the same payload; excess snapshot records are dropped whole rather than truncating arguments or scopes into a misleading approval.
 
@@ -40,9 +42,18 @@ Approval cards show the exact canonical invocation JSON, requested permission sc
 
 ```sh
 cd apps/android
-./gradlew --no-daemon testDebugUnitTest
-./gradlew --no-daemon lintDebug assembleDebug assembleRelease assembleDebugAndroidTest
+./gradlew --no-daemon :protocol:checkAndroidProtocolBindings
+./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug assembleRelease assembleDebugAndroidTest
 ```
+
+After changing `device.proto`, refresh and commit the Java Lite mirror under `protocol/generated/android`:
+
+```sh
+./gradlew --no-daemon :protocol:regenerateAndroidProtocolBindings
+./gradlew --no-daemon :protocol:checkAndroidProtocolBindings
+```
+
+The check compares the generated and committed relative file sets and bytes and runs in Android CI.
 
 Run instrumentation only with an attached target:
 

@@ -1,0 +1,271 @@
+syntax = "proto3";
+
+package veqri.v1;
+
+option go_package = "github.com/veqri/veqri/protocol/generated/go/veqri/v1;veqriv1";
+option java_multiple_files = true;
+option java_outer_classname = "DeviceProtocol";
+option java_package = "ai.veqri.protocol.v1";
+
+// Device-specific projections mirror the current Android JSON/WebSocket edge.
+// Domain and Compose render models remain independent from generated messages.
+
+enum DeviceMessageAuthor {
+  DEVICE_MESSAGE_AUTHOR_UNSPECIFIED = 0;
+  DEVICE_MESSAGE_AUTHOR_USER = 1;
+  DEVICE_MESSAGE_AUTHOR_ASSISTANT = 2;
+  DEVICE_MESSAGE_AUTHOR_SYSTEM = 3;
+}
+
+enum DeviceTaskStatus {
+  DEVICE_TASK_STATUS_UNSPECIFIED = 0;
+  DEVICE_TASK_STATUS_CREATED = 1;
+  DEVICE_TASK_STATUS_QUEUED = 2;
+  DEVICE_TASK_STATUS_ASSIGNED = 3;
+  DEVICE_TASK_STATUS_RUNNING = 4;
+  DEVICE_TASK_STATUS_WAITING_FOR_CHILDREN = 5;
+  DEVICE_TASK_STATUS_WAITING_FOR_APPROVAL = 6;
+  DEVICE_TASK_STATUS_BLOCKED = 7;
+  DEVICE_TASK_STATUS_COMPLETED = 8;
+  DEVICE_TASK_STATUS_PARTIALLY_COMPLETED = 9;
+  DEVICE_TASK_STATUS_FAILED = 10;
+  DEVICE_TASK_STATUS_CANCEL_REQUESTED = 11;
+  DEVICE_TASK_STATUS_CANCELLED = 12;
+  DEVICE_TASK_STATUS_TIMED_OUT = 13;
+}
+
+enum DeviceApprovalRisk {
+  DEVICE_APPROVAL_RISK_UNSPECIFIED = 0;
+  DEVICE_APPROVAL_RISK_READ_ONLY = 1;
+  DEVICE_APPROVAL_RISK_LOW = 2;
+  DEVICE_APPROVAL_RISK_STATE_CHANGING = 3;
+  DEVICE_APPROVAL_RISK_DESTRUCTIVE = 4;
+  DEVICE_APPROVAL_RISK_PRIVILEGED = 5;
+  DEVICE_APPROVAL_RISK_EXTERNAL_COMMUNICATION = 6;
+  DEVICE_APPROVAL_RISK_SECRET_ACCESS = 7;
+}
+
+enum DeviceApprovalStatus {
+  DEVICE_APPROVAL_STATUS_UNSPECIFIED = 0;
+  DEVICE_APPROVAL_STATUS_PENDING = 1;
+  DEVICE_APPROVAL_STATUS_APPROVED = 2;
+  DEVICE_APPROVAL_STATUS_DENIED = 3;
+  DEVICE_APPROVAL_STATUS_EXPIRED = 4;
+}
+
+enum DeviceDialogPhase {
+  DEVICE_DIALOG_PHASE_UNSPECIFIED = 0;
+  DEVICE_DIALOG_PHASE_IDLE = 1;
+  DEVICE_DIALOG_PHASE_RINGING = 2;
+  DEVICE_DIALOG_PHASE_CONNECTING = 3;
+  DEVICE_DIALOG_PHASE_LISTENING = 4;
+  DEVICE_DIALOG_PHASE_TRANSCRIBING = 5;
+  DEVICE_DIALOG_PHASE_THINKING = 6;
+  DEVICE_DIALOG_PHASE_DELEGATING = 7;
+  DEVICE_DIALOG_PHASE_WAITING_FOR_RESULT = 8;
+  DEVICE_DIALOG_PHASE_SPEAKING = 9;
+  DEVICE_DIALOG_PHASE_INTERRUPTED = 10;
+  DEVICE_DIALOG_PHASE_WAITING_FOR_APPROVAL = 11;
+  DEVICE_DIALOG_PHASE_RECONNECTING = 12;
+  DEVICE_DIALOG_PHASE_FAILED = 13;
+  DEVICE_DIALOG_PHASE_ENDED = 14;
+}
+
+enum DeviceCallDirection {
+  DEVICE_CALL_DIRECTION_UNSPECIFIED = 0;
+  DEVICE_CALL_DIRECTION_INCOMING = 1;
+  DEVICE_CALL_DIRECTION_OUTGOING = 2;
+}
+
+enum DeviceAudioRoute {
+  DEVICE_AUDIO_ROUTE_UNSPECIFIED = 0;
+  DEVICE_AUDIO_ROUTE_EARPIECE = 1;
+  DEVICE_AUDIO_ROUTE_SPEAKER = 2;
+  DEVICE_AUDIO_ROUTE_WIRED_HEADSET = 3;
+  DEVICE_AUDIO_ROUTE_BLUETOOTH = 4;
+}
+
+enum DeviceTtsStatus {
+  DEVICE_TTS_STATUS_UNSPECIFIED = 0;
+  DEVICE_TTS_STATUS_IDLE = 1;
+  DEVICE_TTS_STATUS_BUFFERING = 2;
+  DEVICE_TTS_STATUS_SPEAKING = 3;
+  DEVICE_TTS_STATUS_INTERRUPTED = 4;
+  DEVICE_TTS_STATUS_FAILED = 5;
+}
+
+enum DeviceCommandResultStatus {
+  DEVICE_COMMAND_RESULT_STATUS_UNSPECIFIED = 0;
+  DEVICE_COMMAND_RESULT_STATUS_COMMITTED = 1;
+  DEVICE_COMMAND_RESULT_STATUS_REJECTED = 2;
+}
+
+message DeviceCommand {
+  string command_id = 1;
+  uint32 protocol_version = 2;
+
+  oneof command {
+    DeviceSendTextCommand send_text = 10;
+    DeviceSetTranscriptRetentionCommand set_transcript_retention = 11;
+    DeviceStartCallCommand start_call = 12;
+    DeviceStartCallCommand simulate_incoming_call = 13;
+    DeviceSessionCommand answer_call = 14;
+    DeviceSessionCommand decline_call = 15;
+    DeviceSessionCommand end_call = 16;
+    DeviceSetMutedCommand set_muted = 17;
+    DeviceSetPushToTalkCommand set_push_to_talk = 18;
+    DeviceSelectAudioRouteCommand select_audio_route = 19;
+    DeviceSessionCommand interrupt_tts = 20;
+    DeviceResolveApprovalCommand resolve_approval = 21;
+    DeviceTaskCommand cancel_task = 22;
+    DeviceTaskCommand retry_task = 23;
+  }
+}
+
+message DeviceSendTextCommand {
+  optional string conversation_id = 1;
+  string text = 2;
+  bool retain_transcript = 3;
+}
+
+message DeviceSetTranscriptRetentionCommand {
+  optional string conversation_id = 1;
+  bool enabled = 2;
+}
+
+message DeviceStartCallCommand {
+  bool retain_transcript = 1;
+}
+
+message DeviceSessionCommand {
+  string session_id = 1;
+}
+
+message DeviceSetMutedCommand {
+  string session_id = 1;
+  bool is_muted = 2;
+}
+
+message DeviceSetPushToTalkCommand {
+  string session_id = 1;
+  bool enabled = 2;
+}
+
+message DeviceSelectAudioRouteCommand {
+  string session_id = 1;
+  DeviceAudioRoute route = 2;
+}
+
+message DeviceResolveApprovalCommand {
+  string approval_id = 1;
+  bool approved = 2;
+}
+
+message DeviceTaskCommand {
+  string task_id = 1;
+}
+
+message DeviceEvent {
+  string id = 1;
+  string correlation_id = 2;
+
+  oneof event {
+    DeviceSnapshot snapshot = 10;
+    DeviceCommandResult command_result = 11;
+    DeviceConversationMessage message_added = 12;
+    DeviceTask task_changed = 13;
+    DeviceApproval approval_changed = 14;
+    DeviceTranscript partial_transcript = 15;
+    DeviceTranscript final_transcript = 16;
+    DeviceVoiceSession incoming_call = 17;
+    DeviceVoiceSession voice_changed = 18;
+    DeviceTtsChanged tts_changed = 19;
+    DeviceTtsSpeak tts_speak = 20;
+  }
+}
+
+message DeviceSnapshot {
+  string snapshot_id = 1;
+  optional string conversation_id = 2;
+  bool transcript_retention = 3;
+  repeated DeviceConversationMessage messages = 4;
+  repeated DeviceTask tasks = 5;
+  repeated DeviceApproval approvals = 6;
+  DeviceVoiceSession voice_session = 7;
+}
+
+message DeviceCommandResult {
+  string command_id = 1;
+  string command_type = 2;
+  DeviceCommandResultStatus status = 3;
+  optional string safe_message = 4;
+}
+
+message DeviceConversationMessage {
+  string message_id = 1;
+  string conversation_id = 2;
+  DeviceMessageAuthor author = 3;
+  string text = 4;
+  int64 created_at_epoch_millis = 5;
+  string correlation_id = 6;
+}
+
+message DeviceTask {
+  string task_id = 1;
+  string root_task_id = 2;
+  string conversation_id = 3;
+  string goal = 4;
+  string assigned_agent = 5;
+  DeviceTaskStatus status = 6;
+  int32 progress_percent = 7;
+  string summary = 8;
+  int64 created_at_epoch_millis = 9;
+  int64 updated_at_epoch_millis = 10;
+  string correlation_id = 11;
+  bool can_retry = 12;
+  int32 priority = 13;
+  bool dismissed = 14;
+}
+
+message DeviceApproval {
+  string approval_id = 1;
+  string task_id = 2;
+  string title = 3;
+  string redacted_arguments = 4;
+  DeviceApprovalRisk risk = 5;
+  int64 expires_at_epoch_millis = 6;
+  DeviceApprovalStatus status = 7;
+  repeated string requested_scopes = 8;
+  string reason = 9;
+}
+
+message DeviceTranscript {
+  string conversation_id = 1;
+  string text = 2;
+}
+
+message DeviceVoiceSession {
+  string session_id = 1;
+  string conversation_id = 2;
+  DeviceCallDirection direction = 3;
+  DeviceDialogPhase phase = 4;
+  optional int64 started_at_epoch_millis = 5;
+  bool is_muted = 6;
+  bool is_push_to_talk = 7;
+  DeviceAudioRoute audio_route = 8;
+  DeviceTtsStatus tts_status = 9;
+  bool is_simulated_media = 10;
+  string media_notice = 11;
+}
+
+message DeviceTtsChanged {
+  DeviceTtsStatus status = 1;
+}
+
+message DeviceTtsSpeak {
+  string session_id = 1;
+  string conversation_id = 2;
+  DeviceTtsStatus status = 3;
+  // The Android edge MUST bound this UTF-8 value to at most 12,288 bytes.
+  string text = 4;
+}

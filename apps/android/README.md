@@ -12,6 +12,7 @@ The checked-in debug default is intentionally deterministic and local. It exerci
 | One-time code pairing UI | Operational; simulator code is `123456` and is single-use for that simulator process |
 | Real Core HTTP pairing adapter | Implemented for `POST /v1/pairing/claim`; requires a compatible Core |
 | Authenticated WebSocket stream | Implemented for `/v1/device/events`, bearer auth, device identity, protocol v1, ping/pong, bounded reconnect backoff |
+| Typed Android protocol boundary | Operational; the flat JSON wire is translated through generated Java Lite messages inside `DeviceJsonCodec` |
 | Transport security | Release builds require HTTPS for every host; only the debug resource/policy permits cleartext `localhost` and emulator alias `10.0.2.2` |
 | Command safety | Commands carry unique IDs and are never retried automatically |
 | Text conversation and streaming task progress | Operational in deterministic simulator |
@@ -27,7 +28,7 @@ The checked-in debug default is intentionally deterministic and local. It exerci
 | WebRTC-compatible offer/answer/ICE boundary | Implemented as `VoiceMediaTransport` / `WebRtcEngine` |
 | Real WebRTC media | **Not packaged.** Release builds fail clearly with “No native WebRTC engine” instead of reporting a fake connection |
 | Local voice transport | **Simulated input/media only.** It sends no microphone packets; answer playback is separate from WebRTC media |
-| Streaming STT/TTS | STT and Core audio chunks are deterministic simulation; one bounded logical answer is played through Android `TextToSpeech` |
+| Streaming STT/TTS | STT and Core audio chunks are deterministic simulation; one logical answer of at most 12,288 UTF-8 bytes is played through Android `TextToSpeech` |
 | Android answer playback | Operational with an installed offline voice for the device language; text is split only inside the platform adapter and is never logged |
 | TTS barge-in | Operational for platform playback and simulator state; interruption stops local speech immediately and does not cancel delegated tasks |
 | Offline wake/push | Adapter point only. LAN delivery cannot wake a disconnected sleeping app without a configured external/self-hosted push channel |
@@ -44,7 +45,8 @@ Google does not publish a stable first-party WebRTC Android Maven coordinate sui
 - Stable Compose BOM `2026.06.00`
 - Activity Compose `1.13.0`, Lifecycle `2.10.0`
 - Room `2.8.4`, DataStore `1.2.1`, OkHttp `5.3.2`
-- All resolved app configurations are pinned in `app/gradle.lockfile`
+- Protobuf Gradle plugin `0.10.0`; `protoc` and `protobuf-javalite` `4.35.1`
+- Resolved app and protocol configurations are pinned in `app/gradle.lockfile` and `protocol/gradle.lockfile`
 
 Version choices follow the official [AGP 9.2 compatibility table](https://developer.android.com/build/releases/agp-9-2-0-release-notes), [built-in Kotlin migration guide](https://developer.android.com/build/migrate-to-built-in-kotlin), and [Compose BOM guidance](https://developer.android.com/develop/ui/compose/bom).
 
@@ -84,6 +86,18 @@ Run JVM unit tests, including deterministic transport, reconnect, approval denia
 ./gradlew :app:testDebugUnitTest
 ```
 
+Verify that the committed Java Lite bindings match `device.proto` byte for byte:
+
+```bash
+./gradlew :protocol:checkAndroidProtocolBindings
+```
+
+After an intentional schema change, regenerate the committed mirror:
+
+```bash
+./gradlew :protocol:regenerateAndroidProtocolBindings
+```
+
 Compile the instrumentation test APK without a device:
 
 ```bash
@@ -100,7 +114,7 @@ adb devices
 Run the full local verification set:
 
 ```bash
-./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
+./gradlew :protocol:checkAndroidProtocolBindings :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest
 ```
 
 Install and launch the simulator build:
@@ -142,7 +156,7 @@ The WebSocket endpoint is derived as `wss://<core>/v1/device/events` (or `ws://`
 - `X-Veqri-Protocol-Version: 1`
 - `Sec-WebSocket-Protocol: veqri.v1`
 
-The client accepts versioned event envelopes containing `id`, `type`, `correlation_id`, and `payload`. Unknown/malformed events become a safe protocol error; raw payloads and authorization headers are never logged. Align this hand-written adapter with generated shared protocol types once the monorepo protocol generator is connected.
+The client accepts versioned event envelopes containing `id`, `type`, `correlation_id`, and `payload`. The wire remains the existing flat, snake-case JSON contract; `DeviceJsonCodec` translates it to and from generated Java Lite messages before mapping to the app's domain events and commands. Unknown/malformed events become a safe protocol error; raw payloads and authorization headers are never logged.
 
 ## Architecture
 
@@ -162,6 +176,7 @@ Compose screens -> VeqriViewModel -> immutable render models
 ```
 
 - UI models contain only rendering values and stable identity fields used by lazy-list keys/actions.
+- Generated protocol messages are confined to `DeviceJsonCodec`; repository, ViewModel, and Compose state continue to use immutable domain/render models.
 - Compose text-entry mechanics stay local with `rememberSaveable`; business state remains in the repository/ViewModel.
 - The repository is not an authoritative task store. Core events drive state, while Room is only a restart-friendly local cache.
 - Foreground service startup follows Android restrictions: tapping Answer opens `MainActivity`; after it is visible and microphone permission is granted, media setup succeeds before the microphone FGS starts.
@@ -183,6 +198,8 @@ Compose screens -> VeqriViewModel -> immutable render models
 ## Source layout
 
 - `network/`: Core transport contract, deterministic fake, authenticated OkHttp/WebSocket adapter
+- `protocol/`: Java 17 Gradle module that generates and compiles the Android Java Lite projection
+- `../../protocol/proto/veqri/v1/device.proto` and `../../protocol/generated/android/`: canonical Android projection and committed generated mirror
 - `media/`: WebRTC-shaped media boundary, audio routing, explicit simulator/unavailable adapters
 - `data/`: repository, immutable domain snapshots, Room/DataStore/Keystore implementations
 - `call/`: incoming/active notifications, foreground service, notification actions
@@ -192,18 +209,17 @@ Compose screens -> VeqriViewModel -> immutable render models
 
 ## Verification status
 
-As of 2026-07-12, all 41 JVM tests, debug lint, debug/release APK builds, and the four-test instrumentation APK compilation pass. The three instrumentation scenarios present during the last attached-device run passed on a physical Android 15 target; rerun `connectedDebugAndroidTest` for the current four-test suite when a device or emulator is available. Lint reports 0 errors; its remaining eight warnings are pinned toolchain/dependency update notices rather than source-indentation findings.
+The local and CI verification commands above include the checked-in-binding gate, JVM tests, lint, debug/release APK builds, and instrumentation APK compilation. The three instrumentation scenarios present during the last attached-device run passed on a physical Android 15 target; rerun `connectedDebugAndroidTest` for the current four-test suite when a device or emulator is available.
 
 ## Known integration work
 
-1. Connect generated protocol models and confirm endpoint/event names against Veqri Core contract tests.
-2. Package and security-review a reproducible native WebRTC engine; add SDP/ICE and interruption integration tests.
-3. Add a configurable push adapter for sleeping/disconnected incoming calls.
-4. Add instrumented audio-route tests on representative Bluetooth/wired hardware.
-5. Add Room migrations before incrementing schema version; destructive fallback is intentionally disabled.
+1. Package and security-review a reproducible native WebRTC engine; add SDP/ICE and interruption integration tests.
+2. Add a configurable push adapter for sleeping/disconnected incoming calls.
+3. Add instrumented audio-route tests on representative Bluetooth/wired hardware.
+4. Add Room migrations before incrementing schema version; destructive fallback is intentionally disabled.
 
 When intentionally updating dependencies, regenerate and review the dependency lock:
 
 ```bash
-./gradlew :app:dependencies --write-locks
+./gradlew --write-locks :app:dependencies :protocol:dependencies
 ```

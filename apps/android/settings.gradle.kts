@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "VeqriAndroid"
-include(":app")
+include(":app", ":protocol")
