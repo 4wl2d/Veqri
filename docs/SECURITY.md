@@ -11,6 +11,7 @@
 - Local read-only tools may be allowed; state changes require evaluation, destructive/external/secret actions require approval, privilege escalation is denied.
 - Emergency stop and per-agent/per-connector kill switches are enforced in Core.
 - Rolling content and audit retention is configurable with `VEQRI_RETENTION_DAYS`; `0` retains indefinitely.
+- On Unix, Core enforces `0700` for its data, backup, and diagnostics directories and `0600` for the database, fallback token, backup, and diagnostics files. Windows service/install tooling owns the equivalent account ACL boundary.
 
 A paired Android device is an owner-class client: it may inspect the owner's conversations/tasks and resolve pending approvals, including work originating from connectors. It cannot mint `local`-trust events, enumerate devices/audit/diagnostics, or invoke low-level tools directly. Pairing therefore grants broad personal-assistant authority, not a guest scope. Voice-session control remains bound to its target device. Revoke a lost/shared device immediately; narrower per-device roles are a post-MVP policy extension.
 
@@ -20,7 +21,7 @@ Pairing claims are limited over a rolling 60-second window to five admitted atte
 
 Configuration stores locators such as `keychain:veqri/slack/bot-token`, not secret values. Development environment variables are supported for simulators but should not be used for packaged production. Tools receive only references/scoped resolved values; remote agents do not receive the whole environment.
 
-Never log bearer tokens, signing secrets, private keys, authorization headers, full sensitive environment variables, or unredacted command output. Diagnostic exports use `0600` and default to path/content redaction.
+Never log bearer tokens, signing secrets, private keys, authorization headers, full sensitive environment variables, or unredacted command output. Diagnostic exports default to path/content redaction and use exclusive, uniquely named `0600` files that are synced before success is reported.
 
 Device rotation stores active and five-minute pending hashes, never raw credentials. The pending credential is scoped to confirmation until promotion. Prepare, confirm, and cancellation state changes are committed atomically with sanitized audit records. The old credential remains active until the client has persisted and confirms its replacement; a lost confirmation response is recovered by idempotently confirming again with the promoted credential.
 
@@ -36,7 +37,9 @@ User-initiated task cancellation, retry, reprioritization, and dismissal commit 
 
 ## Backup and deletion
 
-Desktop backup uses SQLite `VACUUM INTO` to create a consistent local copy. Backups contain private conversations/audit and should be encrypted by the user's storage/backup system. Retention sweeps affect only the live database; they do not rewrite or delete existing backups or diagnostic exports.
+Desktop backup uses SQLite `VACUUM INTO` to create a consistent local copy in a hidden, non-`.db` temporary file inside the private backup directory. Core syncs a newly prepared artifact directory and its parent, restricts the temporary file to `0600`, reopens it read-only, requires `PRAGMA quick_check` to return `ok`, syncs and closes it, then atomically renames it to its unique final `.db` name and syncs the directory. A failed or cancelled backup removes its temporary file and never intentionally replaces an existing final backup. Backups contain private conversations/audit and should be encrypted by the user's storage/backup system. Retention sweeps affect only the live database; they do not rewrite or delete existing backups or diagnostic exports.
+
+Independent fixed storage maintenance deletes pairing sessions only after they have been expired for more than 24 hours and deletes only completed desktop action results older than seven days. It runs at startup and every six hours even when content retention is disabled. In-progress desktop actions and all task, tool, approval, and delivery state are outside this cleanup whitelist.
 
 For a positive `VEQRI_RETENTION_DAYS`, Core starts an asynchronous sweep at startup and repeats it every six hours. The sweep deletes turns and scrubs conversation titles, processed event content, and terminal task/tool/approval/delivery content strictly older than the rolling UTC cutoff. It deletes SQLite artifact metadata but does not delete arbitrary workspace or externally managed files referenced by artifact URIs. Active task graphs and terminal graphs with pending approvals, pending deliveries, or uncertain tool invocations are retained until safe. Audit rows use the same cutoff, with task-linked audit retained while its graph is active or unresolved. Each successful sweep and its sanitized counts commit atomically; an audit-write failure rolls the sweep back.
 

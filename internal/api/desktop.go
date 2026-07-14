@@ -20,6 +20,7 @@ import (
 	"github.com/veqri/veqri/core/tasks"
 	"github.com/veqri/veqri/internal/auth"
 	"github.com/veqri/veqri/internal/ids"
+	"github.com/veqri/veqri/internal/securefs"
 	"github.com/veqri/veqri/internal/stream"
 )
 
@@ -546,28 +547,21 @@ func (s *Server) updateDesktopSettings(ctx context.Context, patch json.RawMessag
 }
 
 func (s *Server) createBackup(ctx context.Context) (string, error) {
-	directory := filepath.Join(s.config.DataDir, "backups")
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return "", err
-	}
-	path := filepath.Join(directory, "veqri-"+time.Now().UTC().Format("20060102T150405.000000000Z")+".db")
-	if _, err := s.store.DB().ExecContext(ctx, "VACUUM INTO ?", path); err != nil {
-		return "", err
-	}
-	return path, nil
+	return s.store.CreateBackup(ctx, filepath.Join(s.config.DataDir, "backups"))
 }
 
 func (s *Server) createDiagnosticsExport(ctx context.Context, redact bool) (string, error) {
 	directory := filepath.Join(s.config.DataDir, "diagnostics")
-	if err := os.MkdirAll(directory, 0o700); err != nil {
+	if err := securefs.EnsurePrivateDirDurable(directory); err != nil {
 		return "", err
 	}
 	diagnostics, err := s.store.Diagnostics(ctx)
 	if err != nil {
 		return "", err
 	}
+	generatedAt := time.Now().UTC()
 	payload := map[string]any{
-		"generated_at": time.Now().UTC(), "redacted": redact, "diagnostics": diagnostics,
+		"generated_at": generatedAt, "redacted": redact, "diagnostics": diagnostics,
 		"platform": runtime.GOOS + "/" + runtime.GOARCH, "config": map[string]any{
 			"bind_address": s.config.Address, "database": redactedPath(s.config.DatabasePath, redact),
 			"media_transport": s.config.MediaTransport, "stt_provider": s.config.STTProvider,
@@ -578,8 +572,9 @@ func (s *Server) createDiagnosticsExport(ctx context.Context, redact bool) (stri
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(directory, "veqri-diagnostics-"+time.Now().UTC().Format("20060102T150405Z")+".json")
-	if err := os.WriteFile(path, raw, 0o600); err != nil {
+	path := filepath.Join(directory, "veqri-diagnostics-"+
+		generatedAt.Format("20060102T150405.000000000Z")+"-"+ids.New()+".json")
+	if err := securefs.WriteNewPrivateFile(path, raw); err != nil {
 		return "", err
 	}
 	return path, nil

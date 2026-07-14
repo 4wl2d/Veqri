@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/veqri/veqri/internal/securefs"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -39,9 +41,21 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if path == "" {
 		return nil, errors.New("database path is required")
 	}
+	if len(path) >= len("file:") && strings.EqualFold(path[:len("file:")], "file:") {
+		return nil, errors.New("SQLite file URI database paths are not supported; use a filesystem path or :memory:")
+	}
+	if strings.ContainsRune(path, '?') {
+		return nil, errors.New("SQLite database path query parameters are not supported; use a plain filesystem path or :memory:")
+	}
 	if path != ":memory:" {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			return nil, fmt.Errorf("create database directory: %w", err)
+		}
+		if err := secureDatabaseArtifacts(path); err != nil {
+			return nil, err
+		}
+		if err := securefs.CreateOrSecurePrivateFile(path); err != nil {
+			return nil, fmt.Errorf("secure database file: %w", err)
 		}
 	}
 	db, err := sql.Open("sqlite", path)
@@ -69,7 +83,22 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if path != ":memory:" {
+		if err := secureDatabaseArtifacts(path); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+	}
 	return store, nil
+}
+
+func secureDatabaseArtifacts(path string) error {
+	for _, candidate := range []string{path, path + "-wal", path + "-shm", path + "-journal"} {
+		if err := securefs.EnsurePrivateFileIfExists(candidate); err != nil {
+			return fmt.Errorf("secure database artifact %q: %w", candidate, err)
+		}
+	}
+	return nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }
