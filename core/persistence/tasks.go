@@ -229,6 +229,20 @@ func (s *Store) GetTaskByIdempotencyKey(ctx context.Context, key string) (tasks.
 // this prevents an explicit retry from merely re-synthesizing unchanged
 // terminal failures.
 func (s *Store) RetryTask(ctx context.Context, id string) (tasks.Task, error) {
+	audit := systemTaskControlAudit("task.retry", map[string]any{"source": "core"})
+	return s.retryTask(ctx, id, &audit)
+}
+
+// RetryTaskWithAudit makes the explicit retry and its actor audit entry
+// visible in one commit. If the audit insert fails, every graph reset is
+// rolled back.
+func (s *Store) RetryTaskWithAudit(ctx context.Context, id string,
+	audit observability.AuditEntry) (tasks.Task, error) {
+	return s.retryTask(ctx, id, &audit)
+}
+
+func (s *Store) retryTask(ctx context.Context, id string,
+	audit *observability.AuditEntry) (tasks.Task, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return tasks.Task{}, err
@@ -254,6 +268,13 @@ func (s *Store) RetryTask(ctx context.Context, id string) (tasks.Task, error) {
 	}
 	if err != nil {
 		return tasks.Task{}, err
+	}
+	if audit != nil {
+		entry := normalizeTaskControlAudit(selected, *audit)
+		entry = addTaskGraphAuditDetail(entry, selected.RootTaskID)
+		if err := insertAuditEntry(ctx, tx, entry); err != nil {
+			return tasks.Task{}, fmt.Errorf("audit explicit task retry: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return tasks.Task{}, err
@@ -890,11 +911,33 @@ AND retry_count < max_retries`, string(tasks.StatusQueued), "Transient failure; 
 }
 
 func (s *Store) SetTaskPriority(ctx context.Context, id string, priority int) (tasks.Task, error) {
+	audit := systemTaskControlAudit("task.priority.set", map[string]any{"source": "core", "priority": priority})
+	return s.setTaskPriority(ctx, id, priority, &audit)
+}
+
+// SetTaskPriorityWithAudit commits the scheduling change and its actor audit
+// entry atomically.
+func (s *Store) SetTaskPriorityWithAudit(ctx context.Context, id string, priority int,
+	audit observability.AuditEntry) (tasks.Task, error) {
+	return s.setTaskPriority(ctx, id, priority, &audit)
+}
+
+func (s *Store) setTaskPriority(ctx context.Context, id string, priority int,
+	audit *observability.AuditEntry) (tasks.Task, error) {
 	if priority < -100 || priority > 100 {
 		return tasks.Task{}, errors.New("task priority must be between -100 and 100")
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE tasks SET priority = ?, version = version + 1
-WHERE id = ? AND dismissed = 0`, priority, id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return tasks.Task{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	current, err := scanTask(tx.QueryRowContext(ctx, taskSelect+" WHERE t.id = ?", id))
+	if err != nil {
+		return tasks.Task{}, err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE tasks SET priority = ?, version = version + 1
+WHERE id = ? AND version = ? AND dismissed = 0`, priority, id, current.Version)
 	if err != nil {
 		return tasks.Task{}, err
 	}
@@ -902,12 +945,45 @@ WHERE id = ? AND dismissed = 0`, priority, id)
 	if changed != 1 {
 		return tasks.Task{}, ErrNotFound
 	}
-	return s.GetTask(ctx, id)
+	current.Priority = priority
+	current.Version++
+	if audit != nil {
+		entry := normalizeTaskControlAudit(current, *audit)
+		if err := insertAuditEntry(ctx, tx, entry); err != nil {
+			return tasks.Task{}, fmt.Errorf("audit task priority: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return tasks.Task{}, err
+	}
+	return current, nil
 }
 
 func (s *Store) DismissTask(ctx context.Context, id string) (tasks.Task, error) {
-	result, err := s.db.ExecContext(ctx, `UPDATE tasks SET dismissed = 1, version = version + 1
-WHERE id = ? AND dismissed = 0 AND status IN (?, ?, ?, ?, ?)`, id,
+	audit := systemTaskControlAudit("task.dismiss", map[string]any{"source": "core", "dismissed": true})
+	return s.dismissTask(ctx, id, &audit)
+}
+
+// DismissTaskWithAudit commits the presentation-state change and its actor
+// audit entry atomically.
+func (s *Store) DismissTaskWithAudit(ctx context.Context, id string,
+	audit observability.AuditEntry) (tasks.Task, error) {
+	return s.dismissTask(ctx, id, &audit)
+}
+
+func (s *Store) dismissTask(ctx context.Context, id string,
+	audit *observability.AuditEntry) (tasks.Task, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return tasks.Task{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	current, err := scanTask(tx.QueryRowContext(ctx, taskSelect+" WHERE t.id = ?", id))
+	if err != nil {
+		return tasks.Task{}, err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE tasks SET dismissed = 1, version = version + 1
+WHERE id = ? AND version = ? AND dismissed = 0 AND status IN (?, ?, ?, ?, ?)`, id, current.Version,
 		string(tasks.StatusCompleted), string(tasks.StatusPartiallyCompleted), string(tasks.StatusFailed),
 		string(tasks.StatusCancelled), string(tasks.StatusTimedOut))
 	if err != nil {
@@ -917,49 +993,36 @@ WHERE id = ? AND dismissed = 0 AND status IN (?, ?, ?, ?, ?)`, id,
 	if changed != 1 {
 		return tasks.Task{}, ErrConflict
 	}
-	return s.GetTask(ctx, id)
-}
-
-func (s *Store) RequestTaskCancellation(ctx context.Context, id string) (tasks.Task, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return tasks.Task{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	task, err := scanTask(tx.QueryRowContext(ctx, taskSelect+" WHERE t.id = ?", id))
-	if err != nil {
-		return tasks.Task{}, err
-	}
-	if task.Status.Terminal() {
-		return task, nil
-	}
-	next := tasks.StatusCancelRequested
-	finishedAt := any(nil)
-	if task.Status == tasks.StatusCreated || task.Status == tasks.StatusQueued || task.Status == tasks.StatusWaitingForApproval || task.Status == tasks.StatusBlocked {
-		next = tasks.StatusCancelled
-		finishedAt = formatTime(time.Now().UTC())
-	}
-	if !tasks.CanTransition(task.Status, next) {
-		return tasks.Task{}, fmt.Errorf("%w: cannot cancel task in %s", ErrConflict, task.Status)
-	}
-	result, err := tx.ExecContext(ctx, `UPDATE tasks SET status = ?, finished_at = COALESCE(?, finished_at),
-version = version + 1 WHERE id = ? AND version = ?`, string(next), finishedAt, id, task.Version)
-	if err != nil {
-		return tasks.Task{}, err
-	}
-	changed, _ := result.RowsAffected()
-	if changed != 1 {
-		return tasks.Task{}, ErrConflict
+	current.Dismissed = true
+	current.Version++
+	if audit != nil {
+		entry := normalizeTaskControlAudit(current, *audit)
+		if err := insertAuditEntry(ctx, tx, entry); err != nil {
+			return tasks.Task{}, fmt.Errorf("audit task dismissal: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return tasks.Task{}, err
 	}
-	return s.GetTask(ctx, id)
+	return current, nil
 }
 
 // RequestTaskGraphCancellation applies cancellation to every non-terminal node
 // in the root graph so delegated children cannot outlive the user's intent.
 func (s *Store) RequestTaskGraphCancellation(ctx context.Context, id string) (tasks.Task, []string, error) {
+	audit := systemTaskControlAudit("task.cancel", map[string]any{"source": "core", "scope": "task_graph"})
+	return s.requestTaskGraphCancellation(ctx, id, &audit)
+}
+
+// RequestTaskGraphCancellationWithAudit commits every graph cancellation,
+// pending-approval denial, and the actor audit entry atomically.
+func (s *Store) RequestTaskGraphCancellationWithAudit(ctx context.Context, id string,
+	audit observability.AuditEntry) (tasks.Task, []string, error) {
+	return s.requestTaskGraphCancellation(ctx, id, &audit)
+}
+
+func (s *Store) requestTaskGraphCancellation(ctx context.Context, id string,
+	audit *observability.AuditEntry) (tasks.Task, []string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return tasks.Task{}, nil, err
@@ -1004,11 +1067,63 @@ SELECT id FROM tasks WHERE root_task_id = ?)`, string(approvals.StatusDenied), n
 		string(approvals.StatusPending), task.RootTaskID); err != nil {
 		return tasks.Task{}, nil, err
 	}
+	updated, err := scanTask(tx.QueryRowContext(ctx, taskSelect+" WHERE t.id = ?", id))
+	if err != nil {
+		return tasks.Task{}, nil, err
+	}
+	if audit != nil {
+		entry := normalizeTaskControlAudit(updated, *audit)
+		entry = addTaskGraphAuditDetail(entry, updated.RootTaskID)
+		if err := insertAuditEntry(ctx, tx, entry); err != nil {
+			return tasks.Task{}, nil, fmt.Errorf("audit task cancellation: %w", err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return tasks.Task{}, nil, err
 	}
-	updated, err := s.GetTask(ctx, id)
-	return updated, ids, err
+	return updated, ids, nil
+}
+
+func normalizeTaskControlAudit(task tasks.Task, entry observability.AuditEntry) observability.AuditEntry {
+	if entry.ID == "" {
+		entry.ID = ids.New()
+	}
+	if entry.OccurredAt.IsZero() {
+		entry.OccurredAt = time.Now().UTC()
+	}
+	if entry.ResourceKind == "" {
+		entry.ResourceKind = "task"
+	}
+	entry.ResourceID = task.ID
+	if entry.Decision == "" {
+		entry.Decision = "ALLOW"
+	}
+	if len(entry.Details) == 0 {
+		entry.Details = json.RawMessage(`{}`)
+	}
+	if entry.CorrelationID == "" {
+		entry.CorrelationID = task.CorrelationID
+	}
+	entry.TaskID = task.ID
+	entry.ConversationID = task.ConversationID
+	return entry
+}
+
+func addTaskGraphAuditDetail(entry observability.AuditEntry, rootTaskID string) observability.AuditEntry {
+	var details map[string]any
+	if json.Unmarshal(entry.Details, &details) == nil && details != nil {
+		details["root_task_id"] = rootTaskID
+		entry.Details, _ = json.Marshal(details)
+	}
+	return entry
+}
+
+func systemTaskControlAudit(action string, details map[string]any) observability.AuditEntry {
+	encoded, _ := json.Marshal(details)
+	return observability.AuditEntry{
+		ActorKind: "system", ActorID: "core", Action: action,
+		ResourceKind: "task", Decision: "ALLOW", Details: encoded,
+	}
 }
 
 func (s *Store) MarkTaskCancelled(ctx context.Context, id string) (tasks.Task, error) {

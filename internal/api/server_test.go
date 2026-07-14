@@ -76,6 +76,31 @@ func TestLocalOriginIncludesOnlyLoopbackAndPackagedWailsOrigins(t *testing.T) {
 	}
 }
 
+func TestSupportedProtocolRequiresExplicitV1(t *testing.T) {
+	tests := map[string]bool{
+		"": false, "0": false, "2": false, "1.": false, "1.foo": false,
+		"1.2garbage": false, "1.2.3": false, "1.-1": false, " 1": false,
+		"1": true, "1.0": true, "1.7": true, "1.000": true,
+	}
+	for value, wanted := range tests {
+		if got := supportedProtocol(value); got != wanted {
+			t.Errorf("supportedProtocol(%q) = %v, want %v", value, got, wanted)
+		}
+	}
+}
+
+func TestHasWebSocketProtocolChecksEveryHeaderValue(t *testing.T) {
+	if !hasWebSocketProtocol([]string{"veqri.auth.token", "veqri.v1"}, "veqri.v1") {
+		t.Fatal("protocol in a repeated header value was not found")
+	}
+	if !hasWebSocketProtocol([]string{"veqri.auth.token, veqri.v1"}, "veqri.v1") {
+		t.Fatal("protocol in a comma-separated header value was not found")
+	}
+	if hasWebSocketProtocol([]string{"veqri.auth.token", "veqri.v2"}, "veqri.v1") {
+		t.Fatal("missing protocol was reported as present")
+	}
+}
+
 func TestRetentionCutoffUsesUTCCalendarDaysAndZeroDisablesSweeps(t *testing.T) {
 	now := time.Date(2026, time.March, 31, 23, 45, 0, 0, time.FixedZone("test", 2*60*60))
 	if cutoff, enabled := retentionCutoff(now, 0); enabled || !cutoff.IsZero() {

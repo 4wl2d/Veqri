@@ -33,6 +33,9 @@ func TestHTTPClientSignsLoopbackRequest(t *testing.T) {
 		if got := request.Header.Get("Authorization"); got != "Bearer local-token" {
 			t.Errorf("authorization = %q", got)
 		}
+		if got := request.Header.Get("X-Veqri-Protocol-Version"); got != "1" {
+			t.Errorf("protocol version = %q", got)
+		}
 		if got := request.Header.Get("Idempotency-Key"); got != "event-1" {
 			t.Errorf("idempotency header = %q", got)
 		}

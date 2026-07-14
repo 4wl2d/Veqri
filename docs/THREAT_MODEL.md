@@ -30,7 +30,7 @@ Agent definitions are registered by the owner, have declared execution mode/trus
 
 ### Device theft and unauthorized LAN access
 
-Core binds to loopback by default. LAN requires TLS. Pairing codes are HMAC-hashed, five-minute, and single-use. Device credentials are random, stored in Android Keystore, hash-only in Core, independently revocable, and two-phase rotatable without invalidating the active credential before the replacement is persisted. Pending rotation credentials expire after five minutes and can only confirm their own promotion. Active sockets close with code 4003 on revocation and 4004 after confirmed rotation.
+Core binds to loopback by default. LAN requires TLS. Pairing codes are HMAC-hashed, five-minute, and single-use; claims are capped by shared rolling per-peer and global limits. Device credentials are random, stored in Android Keystore, hash-only in Core, independently revocable, and two-phase rotatable without invalidating the active credential before the replacement is persisted. Pending rotation credentials expire after five minutes and can only confirm their own promotion. A paired credential remains owner-class for tasks, approvals, conversations, and its voice sessions, but operational inventory, audit, diagnostics, local-trust ingress, and low-level tools require the administrator credential. Active sockets close with code 4003 on revocation and 4004 after confirmed rotation.
 
 ### Event replay and duplicate effects
 

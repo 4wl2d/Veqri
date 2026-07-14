@@ -31,6 +31,224 @@ func rejectAuditAction(t *testing.T, store *Store, triggerName, action string) {
 	}
 }
 
+func TestTaskControlMutationsRollBackWhenMandatoryAuditFails(t *testing.T) {
+	t.Run("priority", func(t *testing.T) {
+		ctx := context.Background()
+		store := openTestStore(t)
+		task := testRootTask("task-control-priority-rollback", "", "event-control-priority-rollback", time.Now().UTC())
+		if _, _, err := store.CreateTask(ctx, task); err != nil {
+			t.Fatal(err)
+		}
+		rejectAuditAction(t, store, "reject_task_priority_audit", "task.priority.set")
+
+		if _, err := store.SetTaskPriorityWithAudit(ctx, task.ID, 75,
+			testTaskControlAudit("audit-task-priority", "task.priority.set")); err == nil {
+			t.Fatal("task priority committed without its mandatory audit")
+		}
+		stored, err := store.GetTask(ctx, task.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stored.Priority != task.Priority || stored.Version != task.Version {
+			t.Fatalf("failed priority audit mutated task: priority=%d version=%d", stored.Priority, stored.Version)
+		}
+		assertNoTaskControlAudit(t, store)
+	})
+
+	t.Run("dismiss", func(t *testing.T) {
+		ctx := context.Background()
+		store := openTestStore(t)
+		now := time.Now().UTC()
+		task := testRootTask("task-control-dismiss-rollback", "", "event-control-dismiss-rollback", now)
+		task.Status = tasks.StatusCompleted
+		task.Progress = 100
+		task.FinishedAt = &now
+		if _, _, err := store.CreateTask(ctx, task); err != nil {
+			t.Fatal(err)
+		}
+		rejectAuditAction(t, store, "reject_task_dismiss_audit", "task.dismiss")
+
+		if _, err := store.DismissTaskWithAudit(ctx, task.ID,
+			testTaskControlAudit("audit-task-dismiss", "task.dismiss")); err == nil {
+			t.Fatal("task dismissal committed without its mandatory audit")
+		}
+		stored, err := store.GetTask(ctx, task.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stored.Dismissed || stored.Version != task.Version || stored.Status != task.Status {
+			t.Fatalf("failed dismissal audit mutated task: %+v", stored)
+		}
+		assertNoTaskControlAudit(t, store)
+	})
+
+	t.Run("retry graph", func(t *testing.T) {
+		ctx := context.Background()
+		store := openTestStore(t)
+		root, failedChild, completedChild := retryGraphTasks(time.Now().UTC(), "audit-rollback")
+		if _, _, err := store.CreateTaskGraph(ctx,
+			[]tasks.Task{root, failedChild, completedChild}, []tasks.Dependency{
+				{TaskID: root.ID, DependsOnTaskID: failedChild.ID},
+				{TaskID: root.ID, DependsOnTaskID: completedChild.ID},
+			}); err != nil {
+			t.Fatal(err)
+		}
+		rejectAuditAction(t, store, "reject_task_retry_audit", "task.retry")
+
+		if _, err := store.RetryTaskWithAudit(ctx, failedChild.ID,
+			testTaskControlAudit("audit-task-retry", "task.retry")); err == nil {
+			t.Fatal("task graph retry committed without its mandatory audit")
+		}
+		storedRoot, err := store.GetTask(ctx, root.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		storedChild, err := store.GetTask(ctx, failedChild.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		storedCompleted, err := store.GetTask(ctx, completedChild.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if storedRoot.Status != root.Status || storedRoot.RetryCount != root.RetryCount ||
+			storedRoot.Version != root.Version || string(storedRoot.Result) != string(root.Result) ||
+			storedRoot.UserFacingSummary != root.UserFacingSummary {
+			t.Fatalf("failed retry audit mutated synthesis root: %+v", storedRoot)
+		}
+		if storedChild.Status != failedChild.Status || storedChild.RetryCount != failedChild.RetryCount ||
+			storedChild.Version != failedChild.Version || storedChild.Error != failedChild.Error ||
+			string(storedChild.Result) != string(failedChild.Result) {
+			t.Fatalf("failed retry audit mutated selected child: %+v", storedChild)
+		}
+		if storedCompleted.Status != completedChild.Status || storedCompleted.RetryCount != completedChild.RetryCount ||
+			storedCompleted.Version != completedChild.Version {
+			t.Fatalf("failed retry audit mutated successful sibling: %+v", storedCompleted)
+		}
+		assertNoTaskControlAudit(t, store)
+	})
+
+	t.Run("cancel graph and approval", func(t *testing.T) {
+		ctx := context.Background()
+		store := openTestStore(t)
+		now := time.Now().UTC()
+		root := testRootTask("task-control-cancel-root", "", "event-control-cancel-root", now)
+		root.TaskType = "synthesis"
+		root.Status = tasks.StatusRunning
+		parentID := root.ID
+		child := testRootTask("task-control-cancel-child", "", "event-control-cancel-child", now.Add(time.Millisecond))
+		child.ParentTaskID = &parentID
+		child.RootTaskID = root.ID
+		child.Status = tasks.StatusWaitingForApproval
+		if _, _, err := store.CreateTaskGraph(ctx, []tasks.Task{root, child}, []tasks.Dependency{
+			{TaskID: root.ID, DependsOnTaskID: child.ID},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		approval := approvals.Approval{
+			ID: "approval-task-control-cancel", TaskID: child.ID, ToolName: "shell",
+			ToolArguments:   json.RawMessage(`{"command":"git","args":["status"]}`),
+			RequestedScopes: []string{"tool.shell.execute"}, Risk: coretools.RiskStateChanging,
+			Reason: "verify cancellation rollback", Status: approvals.StatusPending,
+			RequestedAt: now, ExpiresAt: persistenceFuture, CorrelationID: child.CorrelationID,
+		}
+		if err := store.CreateApproval(ctx, approval); err != nil {
+			t.Fatal(err)
+		}
+		rejectAuditAction(t, store, "reject_task_cancel_audit", "task.cancel")
+
+		if _, _, err := store.RequestTaskGraphCancellationWithAudit(ctx, child.ID,
+			testTaskControlAudit("audit-task-cancel", "task.cancel")); err == nil {
+			t.Fatal("task graph cancellation committed without its mandatory audit")
+		}
+		storedRoot, err := store.GetTask(ctx, root.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		storedChild, err := store.GetTask(ctx, child.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		storedApproval, err := store.GetApproval(ctx, approval.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if storedRoot.Status != root.Status || storedRoot.Version != root.Version || storedRoot.FinishedAt != nil {
+			t.Fatalf("failed cancellation audit mutated root: %+v", storedRoot)
+		}
+		if storedChild.Status != child.Status || storedChild.Version != child.Version || storedChild.FinishedAt != nil {
+			t.Fatalf("failed cancellation audit mutated child: %+v", storedChild)
+		}
+		if storedApproval.Status != approvals.StatusPending || storedApproval.DecidedAt != nil || storedApproval.DecidedBy != "" {
+			t.Fatalf("failed cancellation audit resolved approval: %+v", storedApproval)
+		}
+		assertNoTaskControlAudit(t, store)
+	})
+}
+
+func TestTaskControlMutationPersistsCanonicalAuditMetadata(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+	now := time.Now().UTC()
+	conversationRecord, err := store.GetOrCreateConversation(ctx, "audit:task-control-success",
+		"Task control", true, "conversation-task-control-success")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := testRootTask("task-control-priority-success", conversationRecord.ID,
+		"event-control-priority-success", now)
+	if _, _, err := store.CreateTask(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	audit := observability.AuditEntry{
+		ID: "audit-task-control-success", OccurredAt: now, ActorKind: "device",
+		ActorID: "device-task-control-success", Action: "task.priority.set",
+		Decision: "ALLOW", Details: json.RawMessage(`{"priority":60}`),
+		CorrelationID: "command-task-control-success",
+	}
+	updated, err := store.SetTaskPriorityWithAudit(ctx, task.ID, 60, audit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Priority != 60 || updated.Version != task.Version+1 {
+		t.Fatalf("updated task = %+v", updated)
+	}
+	entries, err := store.ListAuditEntries(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("audit entries = %+v, want exactly one", entries)
+	}
+	entry := entries[0]
+	if entry.ID != audit.ID || entry.ActorKind != audit.ActorKind || entry.ActorID != audit.ActorID ||
+		entry.Action != audit.Action || entry.ResourceKind != "task" || entry.ResourceID != task.ID ||
+		entry.Decision != audit.Decision || entry.CorrelationID != audit.CorrelationID ||
+		entry.TaskID != task.ID || entry.ConversationID != conversationRecord.ID ||
+		string(entry.Details) != string(audit.Details) {
+		t.Fatalf("persisted task-control audit metadata = %+v", entry)
+	}
+}
+
+func testTaskControlAudit(id, action string) observability.AuditEntry {
+	return observability.AuditEntry{
+		ID: id, OccurredAt: persistenceNow, ActorKind: "admin", ActorID: "task-control-test",
+		Action: action, ResourceKind: "task", Decision: "ALLOW", Details: json.RawMessage(`{}`),
+		CorrelationID: "correlation-" + id,
+	}
+}
+
+func assertNoTaskControlAudit(t *testing.T, store *Store) {
+	t.Helper()
+	entries, err := store.ListAuditEntries(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("failed task control retained audit entries: %+v", entries)
+	}
+}
+
 func TestApprovalRequestRollsBackWhenMandatoryAuditFails(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)

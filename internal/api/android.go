@@ -46,6 +46,10 @@ func (s *Server) handleDeviceWebSocket(writer http.ResponseWriter, request *http
 		writeError(writer, http.StatusUpgradeRequired, "protocol_version", "protocol version 1 is required")
 		return
 	}
+	if !hasWebSocketProtocol(request.Header.Values("Sec-WebSocket-Protocol"), "veqri.v1") {
+		writeError(writer, http.StatusUpgradeRequired, "websocket_protocol", "WebSocket subprotocol veqri.v1 is required")
+		return
+	}
 	connection, err := websocket.Accept(writer, request, &websocket.AcceptOptions{Subprotocols: []string{"veqri.v1"}})
 	if err != nil {
 		return
@@ -322,9 +326,10 @@ func (s *Server) readDeviceCommands(ctx context.Context, cancel context.CancelFu
 		commandID, commandType := androidCommandIdentity(raw)
 		commandErr := s.handleDeviceCommand(ctx, deviceID, raw)
 		// Successful retention changes include their audit entry in the same
-		// transaction as the privacy setting and scrub. Other outcomes retain
-		// the generic command audit path.
-		if commandType != "conversation.set_transcript_retention" || commandErr != nil {
+		// transaction as the privacy setting and scrub. Task controls likewise
+		// commit their audit with the task mutation. Rejected outcomes retain the
+		// generic command audit path.
+		if !deviceCommandAuditedAtomically(commandType) || commandErr != nil {
 			s.auditDeviceCommand(context.WithoutCancel(ctx), deviceID, raw, commandErr)
 		}
 		if commandID != "" {
@@ -466,16 +471,29 @@ func (s *Server) handleDeviceCommand(ctx context.Context, deviceID string, raw [
 			ConversationID: task.ConversationID, CorrelationID: task.CorrelationID, Payload: task})
 		return nil
 	case "task.cancel":
-		_, err := s.runtime.Cancel(ctx, command.TaskID)
+		_, err := s.runtime.CancelWithAudit(ctx, command.TaskID,
+			newTaskControlAudit("device", deviceID, "device.command."+command.Type,
+				command.CommandID, map[string]any{"type": command.Type, "result": "completed"}))
 		return err
 	case "task.retry":
-		_, err := s.store.RetryTask(ctx, command.TaskID)
+		_, err := s.store.RetryTaskWithAudit(ctx, command.TaskID,
+			newTaskControlAudit("device", deviceID, "device.command."+command.Type,
+				command.CommandID, map[string]any{"type": command.Type, "result": "completed"}))
 		if err == nil {
 			s.runtime.Wake()
 		}
 		return err
 	default:
 		return fmt.Errorf("unsupported command type %q", command.Type)
+	}
+}
+
+func deviceCommandAuditedAtomically(commandType string) bool {
+	switch commandType {
+	case "conversation.set_transcript_retention", "task.cancel", "task.retry":
+		return true
+	default:
+		return false
 	}
 }
 

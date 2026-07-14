@@ -78,7 +78,28 @@ func (r *Runtime) Wake() {
 }
 
 func (r *Runtime) Cancel(ctx context.Context, taskID string) (tasks.Task, error) {
-	task, taskIDs, err := r.store.RequestTaskGraphCancellation(ctx, taskID)
+	return r.cancel(ctx, taskID, nil)
+}
+
+// CancelWithAudit makes the durable graph cancellation and the initiating
+// actor's audit entry one persistence transaction before signalling workers.
+func (r *Runtime) CancelWithAudit(ctx context.Context, taskID string,
+	audit observability.AuditEntry) (tasks.Task, error) {
+	return r.cancel(ctx, taskID, &audit)
+}
+
+func (r *Runtime) cancel(ctx context.Context, taskID string,
+	audit *observability.AuditEntry) (tasks.Task, error) {
+	var (
+		task    tasks.Task
+		taskIDs []string
+		err     error
+	)
+	if audit == nil {
+		task, taskIDs, err = r.store.RequestTaskGraphCancellation(ctx, taskID)
+	} else {
+		task, taskIDs, err = r.store.RequestTaskGraphCancellationWithAudit(ctx, taskID, *audit)
+	}
 	if err != nil {
 		return tasks.Task{}, err
 	}

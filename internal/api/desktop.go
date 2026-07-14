@@ -285,7 +285,9 @@ func (s *Server) handleDesktopAction(writer http.ResponseWriter, request *http.R
 		return
 	}
 	message, artifactPath, actionErr := s.performDesktopAction(request.Context(), body.RequestID, body.Action)
-	s.auditDesktopAction(request.Context(), body.RequestID, body.Action, actionErr)
+	if !desktopActionAuditedAtomically(body.Action) || actionErr != nil {
+		s.auditDesktopAction(request.Context(), body.RequestID, body.Action, actionErr)
+	}
 	if actionErr != nil {
 		// Keep STARTED: a retry is refused instead of risking duplicate side effects.
 		writeError(writer, persistenceStatus(actionErr), "desktop_action", actionErr.Error())
@@ -302,6 +304,21 @@ func (s *Server) handleDesktopAction(writer http.ResponseWriter, request *http.R
 	}
 	s.hub.Publish(stream.Event{Type: "snapshot.changed", Payload: map[string]any{"request_id": body.RequestID}})
 	writeJSON(writer, http.StatusOK, response)
+}
+
+func desktopActionAuditedAtomically(raw json.RawMessage) bool {
+	var action struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(raw, &action) != nil {
+		return false
+	}
+	switch action.Type {
+	case "task.cancel", "task.retry", "task.reprioritize", "task.dismiss":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) auditDesktopAction(ctx context.Context, requestID string, raw json.RawMessage, actionErr error) {
@@ -387,16 +404,22 @@ func (s *Server) performDesktopAction(ctx context.Context, requestID string, raw
 		}
 		return "Request denied; the tool was not executed.", nil, nil
 	case "task.cancel":
-		_, err := s.runtime.Cancel(ctx, action.TaskID)
+		_, err := s.runtime.CancelWithAudit(ctx, action.TaskID,
+			newTaskControlAudit("admin", "desktop", "desktop.action."+action.Type,
+				requestID, map[string]any{"type": action.Type, "result": "completed"}))
 		return "Task cancellation requested.", nil, err
 	case "task.retry":
-		_, err := s.store.RetryTask(ctx, action.TaskID)
+		_, err := s.store.RetryTaskWithAudit(ctx, action.TaskID,
+			newTaskControlAudit("admin", "desktop", "desktop.action."+action.Type,
+				requestID, map[string]any{"type": action.Type, "result": "completed"}))
 		if err == nil {
 			s.runtime.Wake()
 		}
 		return "Task queued for explicit retry.", nil, err
 	case "task.reprioritize":
-		task, err := s.store.SetTaskPriority(ctx, action.TaskID, action.Priority)
+		task, err := s.store.SetTaskPriorityWithAudit(ctx, action.TaskID, action.Priority,
+			newTaskControlAudit("admin", "desktop", "desktop.action."+action.Type,
+				requestID, map[string]any{"type": action.Type, "result": "completed", "priority": action.Priority}))
 		if err == nil {
 			s.hub.Publish(stream.Event{Type: "task.changed", TaskID: task.ID,
 				ConversationID: task.ConversationID, CorrelationID: task.CorrelationID, Payload: task})
@@ -404,7 +427,9 @@ func (s *Server) performDesktopAction(ctx context.Context, requestID string, raw
 		}
 		return "Task priority updated.", nil, err
 	case "task.dismiss":
-		task, err := s.store.DismissTask(ctx, action.TaskID)
+		task, err := s.store.DismissTaskWithAudit(ctx, action.TaskID,
+			newTaskControlAudit("admin", "desktop", "desktop.action."+action.Type,
+				requestID, map[string]any{"type": action.Type, "result": "completed"}))
 		if err == nil {
 			s.hub.Publish(stream.Event{Type: "task.dismissed", TaskID: task.ID,
 				ConversationID: task.ConversationID, CorrelationID: task.CorrelationID, Payload: task})
@@ -568,6 +593,10 @@ func (s *Server) handleDesktopWebSocket(writer http.ResponseWriter, request *htt
 	principal, err := s.authenticator.Authenticate(request.Context(), token)
 	if err != nil || principal.Kind != "admin" {
 		writeError(writer, http.StatusUnauthorized, "unauthorized", "WebSocket authentication required")
+		return
+	}
+	if !hasWebSocketProtocol(request.Header.Values("Sec-WebSocket-Protocol"), "veqri.v1") {
+		writeError(writer, http.StatusUpgradeRequired, "websocket_protocol", "WebSocket subprotocol veqri.v1 is required")
 		return
 	}
 	connection, err := websocket.Accept(writer, request, &websocket.AcceptOptions{

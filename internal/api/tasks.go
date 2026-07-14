@@ -269,18 +269,15 @@ func (s *Server) handleTaskGraph(writer http.ResponseWriter, request *http.Reque
 }
 
 func (s *Server) handleCancelTask(writer http.ResponseWriter, request *http.Request) {
-	task, err := s.runtime.Cancel(request.Context(), request.PathValue("id"))
+	principal := principalFromContext(request.Context())
+	task, err := s.runtime.CancelWithAudit(request.Context(), request.PathValue("id"),
+		newTaskControlAudit(principal.Kind, principal.ID, "task.cancel", "", map[string]any{
+			"scope": "task_graph",
+		}))
 	if err != nil {
 		writeError(writer, persistenceStatus(err), "cancel_task", err.Error())
 		return
 	}
-	principal := principalFromContext(request.Context())
-	_ = s.store.AddAuditEntry(request.Context(), observability.AuditEntry{
-		ID: ids.New(), OccurredAt: time.Now().UTC(), ActorKind: principal.Kind, ActorID: principal.ID,
-		Action: "task.cancel", ResourceKind: "task", ResourceID: task.ID, Decision: "ALLOW",
-		Details:       mustJSON(map[string]any{"root_task_id": task.RootTaskID}),
-		CorrelationID: task.CorrelationID, TaskID: task.ID, ConversationID: task.ConversationID,
-	})
 	writeJSON(writer, http.StatusOK, map[string]any{"task": task})
 }
 
@@ -291,12 +288,15 @@ func (s *Server) handleTaskPriority(writer http.ResponseWriter, request *http.Re
 	if !decodeJSON(writer, request, &body) {
 		return
 	}
-	task, err := s.store.SetTaskPriority(request.Context(), request.PathValue("id"), body.Priority)
+	principal := principalFromContext(request.Context())
+	task, err := s.store.SetTaskPriorityWithAudit(request.Context(), request.PathValue("id"), body.Priority,
+		newTaskControlAudit(principal.Kind, principal.ID, "task.priority.set", "", map[string]any{
+			"priority": body.Priority,
+		}))
 	if err != nil {
 		writeError(writer, persistenceStatus(err), "task_priority", err.Error())
 		return
 	}
-	s.auditTaskControl(request, task, "task.priority.set", map[string]any{"priority": task.Priority})
 	s.hub.Publish(stream.Event{Type: "task.changed", TaskID: task.ID,
 		ConversationID: task.ConversationID, CorrelationID: task.CorrelationID, Payload: task})
 	s.runtime.Wake()
@@ -304,25 +304,27 @@ func (s *Server) handleTaskPriority(writer http.ResponseWriter, request *http.Re
 }
 
 func (s *Server) handleDismissTask(writer http.ResponseWriter, request *http.Request) {
-	task, err := s.store.DismissTask(request.Context(), request.PathValue("id"))
+	principal := principalFromContext(request.Context())
+	task, err := s.store.DismissTaskWithAudit(request.Context(), request.PathValue("id"),
+		newTaskControlAudit(principal.Kind, principal.ID, "task.dismiss", "", map[string]any{
+			"dismissed": true,
+		}))
 	if err != nil {
 		writeError(writer, persistenceStatus(err), "task_dismiss", err.Error())
 		return
 	}
-	s.auditTaskControl(request, task, "task.dismiss", map[string]any{"dismissed": true})
 	s.hub.Publish(stream.Event{Type: "task.dismissed", TaskID: task.ID,
 		ConversationID: task.ConversationID, CorrelationID: task.CorrelationID, Payload: task})
 	writeJSON(writer, http.StatusOK, map[string]any{"task": task})
 }
 
-func (s *Server) auditTaskControl(request *http.Request, task tasks.Task, action string, details map[string]any) {
-	principal := principalFromContext(request.Context())
-	_ = s.store.AddAuditEntry(request.Context(), observability.AuditEntry{
-		ID: ids.New(), OccurredAt: time.Now().UTC(), ActorKind: principal.Kind, ActorID: principal.ID,
-		Action: action, ResourceKind: "task", ResourceID: task.ID, Decision: "ALLOW",
-		Details: mustJSON(details), CorrelationID: task.CorrelationID,
-		TaskID: task.ID, ConversationID: task.ConversationID,
-	})
+func newTaskControlAudit(actorKind, actorID, action, correlationID string,
+	details map[string]any) observability.AuditEntry {
+	return observability.AuditEntry{
+		ID: ids.New(), OccurredAt: time.Now().UTC(), ActorKind: actorKind, ActorID: actorID,
+		Action: action, ResourceKind: "task", Decision: "ALLOW", Details: mustJSON(details),
+		CorrelationID: correlationID,
+	}
 }
 
 func (s *Server) handleTranscriptRetention(writer http.ResponseWriter, request *http.Request) {

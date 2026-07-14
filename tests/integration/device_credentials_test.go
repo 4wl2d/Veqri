@@ -90,6 +90,11 @@ func TestDeviceCredentialRotationHTTPContractAndSocketHandoff(t *testing.T) {
 	testfixture.RequireStatus(t, pendingGeneralAccess, http.StatusUnauthorized)
 	duplicatePrepare := fixture.JSON(t, http.MethodPost, preparePath, device.Credential, nil, nil)
 	testfixture.RequireStatus(t, duplicatePrepare, http.StatusConflict)
+	missingProtocol := fixture.JSON(t, http.MethodPost, confirmPath, "",
+		map[string]any{"key_version": prepared.KeyVersion}, map[string]string{
+			"Authorization": "Bearer " + prepared.Credential,
+		})
+	testfixture.RequireStatus(t, missingProtocol, http.StatusUpgradeRequired)
 
 	confirmResponse := fixture.JSON(t, http.MethodPost, confirmPath, prepared.Credential,
 		map[string]any{"key_version": prepared.KeyVersion}, nil)

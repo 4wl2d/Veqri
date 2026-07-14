@@ -5,12 +5,16 @@
 - Loopback bind only.
 - TLS required for non-loopback bind.
 - Random `0600` admin token; independently revocable, two-phase rotatable device credentials.
+- Every authenticated HTTP request carries an explicit `X-Veqri-Protocol-Version`; a missing or incompatible version fails with HTTP 426.
+- Metrics, device inventory, audit, diagnostics, local-event ingestion, low-level tools, and outbound call creation require the local administrator credential.
 - No plaintext secrets in SQLite provider/connector records.
 - Local read-only tools may be allowed; state changes require evaluation, destructive/external/secret actions require approval, privilege escalation is denied.
 - Emergency stop and per-agent/per-connector kill switches are enforced in Core.
 - Rolling content and audit retention is configurable with `VEQRI_RETENTION_DAYS`; `0` retains indefinitely.
 
-A paired Android device is an owner-class client: it may inspect the owner's conversations/tasks and resolve pending approvals, including work originating from connectors. Pairing therefore grants broad personal-assistant authority, not a guest scope. Voice-session control remains bound to its target device. Revoke a lost/shared device immediately; narrower per-device roles are a post-MVP policy extension.
+A paired Android device is an owner-class client: it may inspect the owner's conversations/tasks and resolve pending approvals, including work originating from connectors. It cannot mint `local`-trust events, enumerate devices/audit/diagnostics, or invoke low-level tools directly. Pairing therefore grants broad personal-assistant authority, not a guest scope. Voice-session control remains bound to its target device. Revoke a lost/shared device immediately; narrower per-device roles are a post-MVP policy extension.
+
+Pairing claims are limited over a rolling 60-second window to five admitted attempts per peer IPv4 address or IPv6 `/64`, and thirty globally. Both claim-route aliases share the same in-memory limiter, and forwarded-address headers are not trusted.
 
 ## Secret references
 
@@ -27,6 +31,8 @@ Do not set `VEQRI_ADDR=0.0.0.0:*` without a certificate/key, firewall restrictio
 ## Approval semantics
 
 Approvals expire after ten minutes by default, are bound to one task/tool/argument object, record the deciding device/admin, and become consumed or denied atomically with the task transition. Retrying the same decision returns conflict. External messages cannot approve their own privileged request.
+
+User-initiated task cancellation, retry, reprioritization, and dismissal commit their state change and sanitized actor audit entry in the same SQLite transaction. If the audit insert fails, the task mutation is rolled back.
 
 ## Backup and deletion
 
