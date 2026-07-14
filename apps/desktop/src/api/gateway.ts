@@ -264,6 +264,9 @@ function validateSnapshot(value: unknown): DesktopSnapshot {
     !isProtocolNumber(value.revision)
     || !isUtcTimestamp(value.generated_at)
     || !isRecord(value.core)
+    || typeof value.core.version !== "string"
+    || typeof value.core.commit !== "string"
+    || (value.core.build_time !== "unknown" && !isUtcTimestamp(value.core.build_time))
     || value.core.protocol_version !== DESKTOP_PROTOCOL_VERSION
     || !isRecord(value.core.database)
     || !isRecord(value.core.queue)

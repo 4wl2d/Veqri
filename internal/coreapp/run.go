@@ -22,6 +22,7 @@ import (
 	"github.com/veqri/veqri/core/voice"
 	"github.com/veqri/veqri/internal/api"
 	"github.com/veqri/veqri/internal/auth"
+	"github.com/veqri/veqri/internal/buildinfo"
 	"github.com/veqri/veqri/internal/config"
 	"github.com/veqri/veqri/internal/secrets"
 	"github.com/veqri/veqri/internal/securefs"
@@ -32,7 +33,10 @@ import (
 // Run starts Veqri Core and blocks until ctx is cancelled or the HTTP server
 // exits. Keeping the runtime in a package lets the standalone daemon and the
 // native desktop application share exactly the same Core implementation.
-func Run(ctx context.Context, version string) error {
+func Run(ctx context.Context, buildInfo buildinfo.Info) error {
+	if err := buildInfo.Validate(); err != nil {
+		return fmt.Errorf("invalid build information: %w", err)
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -138,7 +142,7 @@ func Run(ctx context.Context, version string) error {
 		return err
 	}
 	media := voice.NewSimulatedTransport()
-	serverAPI := api.NewServer(cfg, store, adminToken, runtimeEngine, registry, policyEngine,
+	serverAPI := api.NewServer(cfg, buildInfo, store, adminToken, runtimeEngine, registry, policyEngine,
 		shellExecutor, hub, media, voice.MockTTS{ChunkDelay: 15 * time.Millisecond}, logger)
 	serverAPI.StartBackground(ctx)
 	httpServer := &http.Server{
@@ -148,7 +152,8 @@ func Run(ctx context.Context, version string) error {
 	}
 	serverErrors := make(chan error, 1)
 	go func() {
-		logger.Info("Veqri Core started", "version", version, "address", listener.Addr().String(),
+		logger.Info("Veqri Core started", "version", buildInfo.Version, "commit", buildInfo.Commit,
+			"build_time", buildInfo.BuildTime, "address", listener.Addr().String(),
 			"database", cfg.DatabasePath, "admin_token_source", tokenPath,
 			"media_transport", media.Name(), "workspaces", workspaceList)
 		if cfg.TLSCertFile != "" {

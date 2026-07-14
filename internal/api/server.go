@@ -25,6 +25,7 @@ import (
 	"github.com/veqri/veqri/core/policy"
 	"github.com/veqri/veqri/core/voice"
 	"github.com/veqri/veqri/internal/auth"
+	"github.com/veqri/veqri/internal/buildinfo"
 	"github.com/veqri/veqri/internal/config"
 	"github.com/veqri/veqri/internal/managedcore"
 	"github.com/veqri/veqri/internal/stream"
@@ -33,6 +34,7 @@ import (
 
 type Server struct {
 	config          config.Config
+	buildInfo       buildinfo.Info
 	store           *persistence.Store
 	authenticator   *auth.Authenticator
 	adminToken      string
@@ -64,12 +66,12 @@ type Server struct {
 
 const maintenanceSweepInterval = 6 * time.Hour
 
-func NewServer(cfg config.Config, store *persistence.Store, adminToken string,
+func NewServer(cfg config.Config, buildInfo buildinfo.Info, store *persistence.Store, adminToken string,
 	runtime *agents.Runtime, registry *agents.Registry, policyEngine *policy.Engine,
 	shellExecutor *shell.Executor, hub *stream.Hub, media voice.MediaTransport,
 	tts voice.StreamingTTS, logger *slog.Logger) *Server {
 	return &Server{
-		config: cfg, store: store, authenticator: auth.New(adminToken, store),
+		config: cfg, buildInfo: buildInfo, store: store, authenticator: auth.New(adminToken, store),
 		adminToken: adminToken, runtime: runtime, registry: registry, policy: policyEngine,
 		shell: shellExecutor, hub: hub, media: media, tts: tts, logger: logger,
 		startedAt: time.Now().UTC(), limiters: make(map[string]*requestLimiter),
@@ -457,7 +459,8 @@ func (s *Server) handleHealth(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set(managedcore.OwnerTokenHeader, managedcore.OwnerProof(s.config.ManagedCoreOwnerToken))
 	}
 	writeJSON(writer, http.StatusOK, map[string]any{
-		"status": "ok", "version": "0.1.0", "protocol_version": 1,
+		"status": "ok", "version": s.buildInfo.Version, "commit": s.buildInfo.Commit,
+		"build_time": s.buildInfo.BuildTime, "protocol_version": 1,
 		"uptime_seconds": int64(time.Since(s.startedAt).Seconds()),
 	})
 }
@@ -469,7 +472,10 @@ func (s *Server) handleReady(writer http.ResponseWriter, request *http.Request) 
 		writeError(writer, http.StatusServiceUnavailable, "database_unavailable", "database is not ready")
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]any{"status": "ready"})
+	writeJSON(writer, http.StatusOK, map[string]any{
+		"status": "ready", "version": s.buildInfo.Version, "commit": s.buildInfo.Commit,
+		"build_time": s.buildInfo.BuildTime,
+	})
 }
 
 func (s *Server) handleNegotiate(writer http.ResponseWriter, _ *http.Request) {

@@ -44,6 +44,8 @@ export type VoiceState =
 export interface CoreStatus {
   status: "healthy" | "degraded" | "offline";
   version: string;
+  commit: string;
+  build_time: string;
   protocol_version: number;
   started_at: string;
   uptime_seconds: number;

@@ -8,7 +8,7 @@
 *.log
 coverage.out
 dist/
-build/
+/build/
 .gradle/
 apps/android/.kotlin/
 .idea/

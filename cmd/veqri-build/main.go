@@ -1,8 +1,9 @@
-// Command veqri-build creates the launchable Veqri artifact for the current
-// desktop host and/or a live-transport Android debug APK.
+// Command veqri-build creates Veqri standalone binaries and application
+// artifacts for the current host.
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,25 +12,37 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+
+	"github.com/veqri/veqri/internal/buildinfo"
 )
 
-const usageText = `Usage: go run ./cmd/veqri-build [flags] [desktop|android|all]
+const usageText = `Usage: go run ./cmd/veqri-build [flags] [binaries|desktop|android|all]
 
 Targets:
+  binaries Build standalone Core and CLI binaries for the current OS.
   desktop  Build one self-contained desktop app for the current OS (default).
   android  Build a real-Core debug APK with the emulator URL preconfigured.
-  all      Build both artifacts supported by this host.
+  all      Build standalone binaries, desktop, and Android artifacts (development only).
 
 Flags:
   --root PATH          Repository root (normally detected automatically).
   --skip-npm-ci        Reuse the existing desktop node_modules directory.
+  --release            Require complete release metadata instead of development defaults.
+  --version VERSION    Build version (or VEQRI_VERSION).
+  --commit SHA         Full source commit (or VEQRI_COMMIT).
+  --build-time TIME    RFC3339 build time (or VEQRI_BUILD_TIME).
+  --strip              Strip Go symbol/debug tables from standalone binaries.
 `
 
 type options struct {
 	root      string
 	target    string
 	skipNPMCI bool
+	release   bool
+	strip     bool
+	info      buildinfo.Info
 }
 
 type artifactPlan struct {
@@ -49,6 +62,11 @@ func run(arguments []string) error {
 	if err != nil {
 		return err
 	}
+	restoreEnvironment, err := applyBuildEnvironment(opts.info)
+	if err != nil {
+		return err
+	}
+	defer restoreEnvironment()
 	if opts.root == "" {
 		opts.root, err = findRepositoryRoot()
 		if err != nil {
@@ -64,19 +82,33 @@ func run(arguments []string) error {
 	}
 
 	var artifacts []string
-	if opts.target == "desktop" || opts.target == "all" {
+	if targetIncludes(opts.target, "binaries") {
+		built, err := buildBinaries(opts)
+		if err != nil {
+			return err
+		}
+		artifacts = append(artifacts, built...)
+	}
+	if targetIncludes(opts.target, "desktop") {
 		artifact, err := buildDesktop(opts)
 		if err != nil {
 			return err
 		}
 		artifacts = append(artifacts, artifact)
 	}
-	if opts.target == "android" || opts.target == "all" {
+	if targetIncludes(opts.target, "android") {
 		artifact, err := buildAndroid(opts)
 		if err != nil {
 			return err
 		}
 		artifacts = append(artifacts, artifact)
+	}
+	if targetHasCanonicalBuildIdentity(opts.target) {
+		manifest, err := stageBuildInfo(opts.root, opts.info)
+		if err != nil {
+			return err
+		}
+		artifacts = append(artifacts, manifest)
 	}
 
 	fmt.Println("\nVeqri artifacts:")
@@ -86,11 +118,29 @@ func run(arguments []string) error {
 	return nil
 }
 
+func targetIncludes(target, component string) bool {
+	return target == component || target == "all"
+}
+
+func targetHasCanonicalBuildIdentity(target string) bool {
+	return targetIncludes(target, "binaries") || targetIncludes(target, "desktop")
+}
+
 func parseOptions(arguments []string) (options, error) {
+	return parseOptionsWithEnvironment(arguments, environmentMap(os.Environ()))
+}
+
+func parseOptionsWithEnvironment(arguments []string, environment map[string]string) (options, error) {
+	development := buildinfo.Development()
 	flags := flag.NewFlagSet("veqri-build", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	root := flags.String("root", "", "repository root")
 	skipNPMCI := flags.Bool("skip-npm-ci", false, "reuse node_modules")
+	release := flags.Bool("release", false, "require release metadata")
+	strip := flags.Bool("strip", false, "strip Go symbol and debug tables")
+	version := flags.String("version", environmentOrDefault(environment, buildinfo.VersionEnvironment, development.Version), "build version")
+	commit := flags.String("commit", environmentOrDefault(environment, buildinfo.CommitEnvironment, development.Commit), "source commit")
+	buildTime := flags.String("build-time", environmentOrDefault(environment, buildinfo.BuildTimeEnvironment, development.BuildTime), "RFC3339 build time")
 	if err := flags.Parse(arguments); err != nil {
 		return options{}, fmt.Errorf("%w\n\n%s", err, usageText)
 	}
@@ -103,11 +153,59 @@ func parseOptions(arguments []string) (options, error) {
 		target = remaining[0]
 	}
 	switch target {
-	case "desktop", "android", "all":
+	case "binaries", "desktop", "android", "all":
 	default:
 		return options{}, fmt.Errorf("unknown target %q\n\n%s", target, usageText)
 	}
-	return options{root: *root, target: target, skipNPMCI: *skipNPMCI}, nil
+	info, err := buildinfo.Parse(*version, *commit, *buildTime)
+	if err != nil {
+		return options{}, fmt.Errorf("invalid build metadata: %w", err)
+	}
+	if err := info.Validate(); err != nil {
+		return options{}, fmt.Errorf("invalid build metadata: %w", err)
+	}
+	if *release && info.IsDevelopment() {
+		return options{}, errors.New("--release requires a SemVer version, full commit, and RFC3339 build time")
+	}
+	if !*release && !info.IsDevelopment() {
+		return options{}, errors.New("non-development build metadata requires explicit --release")
+	}
+	if *strip && !targetIncludes(target, "binaries") {
+		return options{}, errors.New("--strip applies only to binaries or all")
+	}
+	if *release && targetIncludes(target, "android") {
+		return options{}, errors.New("--release is not supported for Android until the Android release identity pipeline is implemented; build binaries or desktop explicitly")
+	}
+	if targetIncludes(target, "desktop") {
+		if err := validateDesktopProductVersion(info.PlatformVersion()); err != nil {
+			return options{}, err
+		}
+	}
+	return options{
+		root: *root, target: target, skipNPMCI: *skipNPMCI,
+		release: *release, strip: *strip, info: info,
+	}, nil
+}
+
+func validateDesktopProductVersion(value string) error {
+	parts := strings.Split(value, ".")
+	if len(parts) != 3 {
+		return fmt.Errorf("desktop product version %q must contain three numeric components", value)
+	}
+	for _, part := range parts {
+		component, err := strconv.ParseUint(part, 10, 16)
+		if err != nil || strconv.FormatUint(component, 10) != part {
+			return fmt.Errorf("desktop product version component %q must be a canonical integer from 0 to 65535", part)
+		}
+	}
+	return nil
+}
+
+func environmentOrDefault(environment map[string]string, name, fallback string) string {
+	if value, exists := environment[strings.ToUpper(name)]; exists {
+		return value
+	}
+	return fallback
 }
 
 func findRepositoryRoot() (string, error) {
@@ -151,6 +249,116 @@ func validateRepositoryRoot(root string) error {
 		}
 	}
 	return nil
+}
+
+func buildBinaries(opts options) ([]string, error) {
+	outputDirectory := filepath.Join(opts.root, "build", "bin")
+	if err := os.MkdirAll(outputDirectory, 0o755); err != nil {
+		return nil, fmt.Errorf("create binary output directory: %w", err)
+	}
+	suffix := ""
+	if runtime.GOOS == "windows" {
+		suffix = ".exe"
+	}
+	targets := []struct {
+		name        string
+		packagePath string
+	}{
+		{name: "veqri-core" + suffix, packagePath: "./cmd/veqri-core"},
+		{name: "veqri" + suffix, packagePath: "./cmd/veqri-cli"},
+	}
+	artifacts := make([]string, 0, len(targets))
+	for _, target := range targets {
+		output := filepath.Join(outputDirectory, target.name)
+		arguments, err := binaryBuildArguments(output, target.packagePath, opts.info, opts.strip)
+		if err != nil {
+			return nil, err
+		}
+		if err := runCommand(opts.root, nil, "go", arguments...); err != nil {
+			return nil, err
+		}
+		artifacts = append(artifacts, output)
+	}
+	return artifacts, nil
+}
+
+func binaryBuildArguments(output, packagePath string, info buildinfo.Info, strip bool) ([]string, error) {
+	ldflags, err := info.LDFlags()
+	if err != nil {
+		return nil, fmt.Errorf("prepare build metadata linker flags: %w", err)
+	}
+	if strip {
+		ldflags += " -s -w"
+	}
+	return []string{"build", "-trimpath", "-ldflags", ldflags, "-o", output, packagePath}, nil
+}
+
+func stageBuildInfo(root string, info buildinfo.Info) (string, error) {
+	directory := filepath.Join(root, "build", "release")
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		return "", fmt.Errorf("create release output directory: %w", err)
+	}
+	contents, err := json.MarshalIndent(info, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("encode build information: %w", err)
+	}
+	contents = append(contents, '\n')
+	path := filepath.Join(directory, "buildinfo.json")
+	if err := os.WriteFile(path, contents, 0o644); err != nil {
+		return "", fmt.Errorf("write build information: %w", err)
+	}
+	return path, nil
+}
+
+func buildEnvironment(info buildinfo.Info) (map[string]string, error) {
+	ldflags, err := info.LDFlags()
+	if err != nil {
+		return nil, fmt.Errorf("prepare desktop build metadata: %w", err)
+	}
+	return map[string]string{
+		buildinfo.VersionEnvironment:    info.Version,
+		buildinfo.CommitEnvironment:     info.Commit,
+		buildinfo.BuildTimeEnvironment:  info.BuildTime,
+		"VEQRI_BUILDINFO_LDFLAGS":       ldflags,
+		"VEQRI_DESKTOP_PRODUCT_VERSION": info.PlatformVersion(),
+		"VEQRI_DESKTOP_BUILD_VERSION":   info.Version,
+		"VEQRI_DESKTOP_BUILD_COMMIT":    info.Commit,
+	}, nil
+}
+
+func applyBuildEnvironment(info buildinfo.Info) (func(), error) {
+	values, err := buildEnvironment(info)
+	if err != nil {
+		return nil, err
+	}
+	type previousValue struct {
+		value  string
+		exists bool
+	}
+	previous := make(map[string]previousValue, len(values))
+	for name, value := range values {
+		old, exists := os.LookupEnv(name)
+		previous[name] = previousValue{value: old, exists: exists}
+		if err := os.Setenv(name, value); err != nil {
+			for restoreName, restoreValue := range previous {
+				if restoreValue.exists {
+					_ = os.Setenv(restoreName, restoreValue.value)
+				} else {
+					_ = os.Unsetenv(restoreName)
+				}
+			}
+			return nil, fmt.Errorf("set build environment %s: %w", name, err)
+		}
+	}
+	return func() {
+		for name, value := range previous {
+			if value.exists {
+				_ = os.Setenv(name, value.value)
+			} else {
+				_ = os.Unsetenv(name)
+			}
+		}
+	}, nil
 }
 
 func buildDesktop(opts options) (string, error) {

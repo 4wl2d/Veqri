@@ -1,21 +1,24 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/veqri/veqri/internal/buildinfo"
 )
 
 func TestParseOptionsDefaultsToDesktop(t *testing.T) {
 	t.Parallel()
 
-	opts, err := parseOptions(nil)
+	opts, err := parseOptionsWithEnvironment(nil, nil)
 	if err != nil {
 		t.Fatalf("parseOptions() returned error: %v", err)
 	}
-	if opts.target != "desktop" || opts.root != "" || opts.skipNPMCI {
+	if opts.target != "desktop" || opts.root != "" || opts.skipNPMCI || opts.release || opts.strip || !opts.info.IsDevelopment() {
 		t.Fatalf("parseOptions() = %+v", opts)
 	}
 }
@@ -23,20 +26,235 @@ func TestParseOptionsDefaultsToDesktop(t *testing.T) {
 func TestParseOptionsAcceptsAllTargetAndFlags(t *testing.T) {
 	t.Parallel()
 
-	opts, err := parseOptions([]string{"--root", "/repo", "--skip-npm-ci", "all"})
+	opts, err := parseOptionsWithEnvironment([]string{"--root", "/repo", "--skip-npm-ci", "--strip", "all"}, nil)
 	if err != nil {
 		t.Fatalf("parseOptions() returned error: %v", err)
 	}
-	if opts.target != "all" || opts.root != "/repo" || !opts.skipNPMCI {
+	if opts.target != "all" || opts.root != "/repo" || !opts.skipNPMCI || !opts.strip {
 		t.Fatalf("parseOptions() = %+v", opts)
+	}
+}
+
+func TestAllTargetIncludesEveryBuildComponent(t *testing.T) {
+	t.Parallel()
+
+	for _, component := range []string{"binaries", "desktop", "android"} {
+		if !targetIncludes("all", component) {
+			t.Errorf("all target does not include %q", component)
+		}
+	}
+	if targetIncludes("desktop", "binaries") {
+		t.Fatal("desktop target unexpectedly includes standalone binaries")
+	}
+	if !targetHasCanonicalBuildIdentity("all") || targetHasCanonicalBuildIdentity("android") {
+		t.Fatal("buildinfo manifest target selection does not match canonical P3 surfaces")
+	}
+}
+
+func TestParseOptionsAcceptsValidatedReleaseMetadataFromEnvironment(t *testing.T) {
+	t.Parallel()
+
+	const commit = "0123456789abcdef0123456789abcdef01234567"
+	opts, err := parseOptionsWithEnvironment([]string{"--release", "binaries"}, map[string]string{
+		buildinfo.VersionEnvironment:   "1.2.3-rc.4",
+		buildinfo.CommitEnvironment:    commit,
+		buildinfo.BuildTimeEnvironment: "2026-07-14T12:30:45+02:00",
+	})
+	if err != nil {
+		t.Fatalf("parseOptionsWithEnvironment() returned error: %v", err)
+	}
+	if !opts.release || opts.target != "binaries" || opts.info.Version != "1.2.3-rc.4" ||
+		opts.info.Commit != commit || opts.info.BuildTime != "2026-07-14T10:30:45Z" {
+		t.Fatalf("release options = %+v", opts)
+	}
+}
+
+func TestParseOptionsMetadataFlagsOverrideEnvironment(t *testing.T) {
+	t.Parallel()
+
+	const commit = "0123456789abcdef0123456789abcdef01234567"
+	opts, err := parseOptionsWithEnvironment([]string{
+		"--release", "--version", "2.3.4", "--commit", commit,
+		"--build-time", "2026-07-14T10:30:45Z", "binaries",
+	}, map[string]string{
+		buildinfo.VersionEnvironment:   "invalid",
+		buildinfo.CommitEnvironment:    "invalid",
+		buildinfo.BuildTimeEnvironment: "invalid",
+	})
+	if err != nil {
+		t.Fatalf("metadata flags were not accepted: %v", err)
+	}
+	if opts.info != (buildinfo.Info{Version: "2.3.4", Commit: commit, BuildTime: "2026-07-14T10:30:45Z"}) {
+		t.Fatalf("flag metadata = %+v", opts.info)
+	}
+}
+
+func TestParseOptionsRejectsAndroidReleaseIdentityUntilP19(t *testing.T) {
+	t.Parallel()
+
+	environment := map[string]string{
+		buildinfo.VersionEnvironment:   "1.2.3",
+		buildinfo.CommitEnvironment:    "0123456789abcdef0123456789abcdef01234567",
+		buildinfo.BuildTimeEnvironment: "2026-07-14T10:30:45Z",
+	}
+	for _, target := range []string{"android", "all"} {
+		_, err := parseOptionsWithEnvironment([]string{"--release", target}, environment)
+		if err == nil || !strings.Contains(err.Error(), "not supported for Android") {
+			t.Errorf("release %s error = %v", target, err)
+		}
+	}
+}
+
+func TestParseOptionsRejectsImplicitOrIncompleteRelease(t *testing.T) {
+	t.Parallel()
+
+	const commit = "0123456789abcdef0123456789abcdef01234567"
+	valid := map[string]string{
+		buildinfo.VersionEnvironment:   "1.2.3",
+		buildinfo.CommitEnvironment:    commit,
+		buildinfo.BuildTimeEnvironment: "2026-07-14T10:30:45Z",
+	}
+	tests := []struct {
+		name        string
+		arguments   []string
+		environment map[string]string
+		want        string
+	}{
+		{name: "release requires switch", environment: valid, want: "explicit --release"},
+		{name: "switch rejects development defaults", arguments: []string{"--release"}, want: "--release requires"},
+		{name: "missing commit", arguments: []string{"--release"}, environment: map[string]string{
+			buildinfo.VersionEnvironment: "1.2.3", buildinfo.BuildTimeEnvironment: "2026-07-14T10:30:45Z",
+		}, want: "invalid build metadata"},
+		{name: "invalid time", arguments: []string{"--release"}, environment: map[string]string{
+			buildinfo.VersionEnvironment: "1.2.3", buildinfo.CommitEnvironment: commit,
+			buildinfo.BuildTimeEnvironment: "14 July 2026",
+		}, want: "invalid build metadata"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := parseOptionsWithEnvironment(test.arguments, test.environment)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("parse error = %v, want containing %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestParseOptionsRejectsUnrepresentableDesktopProductVersion(t *testing.T) {
+	t.Parallel()
+
+	environment := map[string]string{
+		buildinfo.VersionEnvironment:   "70000.1.2",
+		buildinfo.CommitEnvironment:    "0123456789abcdef0123456789abcdef01234567",
+		buildinfo.BuildTimeEnvironment: "2026-07-14T10:30:45Z",
+	}
+	if _, err := parseOptionsWithEnvironment([]string{"--release", "desktop"}, environment); err == nil ||
+		!strings.Contains(err.Error(), "0 to 65535") {
+		t.Fatalf("desktop product version error = %v", err)
+	}
+	if _, err := parseOptionsWithEnvironment([]string{"--release", "binaries"}, environment); err != nil {
+		t.Fatalf("valid SemVer was unnecessarily rejected for standalone binaries: %v", err)
 	}
 }
 
 func TestParseOptionsRejectsUnknownTarget(t *testing.T) {
 	t.Parallel()
 
-	if _, err := parseOptions([]string{"ios"}); err == nil {
+	if _, err := parseOptionsWithEnvironment([]string{"ios"}, nil); err == nil {
 		t.Fatal("parseOptions() returned nil error for unknown target")
+	}
+}
+
+func TestParseOptionsRejectsStripWithoutBinaries(t *testing.T) {
+	t.Parallel()
+
+	for _, target := range []string{"desktop", "android"} {
+		if _, err := parseOptionsWithEnvironment([]string{"--strip", target}, nil); err == nil || !strings.Contains(err.Error(), "applies only") {
+			t.Errorf("--strip %s error = %v", target, err)
+		}
+	}
+}
+
+func TestBinaryBuildArgumentsCarryIdenticalValidatedMetadata(t *testing.T) {
+	t.Parallel()
+
+	info, err := buildinfo.Parse(
+		"1.2.3", "0123456789abcdef0123456789abcdef01234567", "2026-07-14T10:30:45Z",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLDFlags, err := info.LDFlags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	core, err := binaryBuildArguments("/out/veqri-core", "./cmd/veqri-core", info, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli, err := binaryBuildArguments("/out/veqri", "./cmd/veqri-cli", info, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if core[3] != wantLDFlags {
+		t.Fatalf("Core ldflags = %q, want %q", core[3], wantLDFlags)
+	}
+	if cli[3] != wantLDFlags+" -s -w" {
+		t.Fatalf("CLI stripped ldflags = %q", cli[3])
+	}
+}
+
+func TestBuildEnvironmentFeedsDesktopFromOneInfo(t *testing.T) {
+	t.Parallel()
+
+	info, err := buildinfo.Parse(
+		"1.2.3-rc.4", "0123456789abcdef0123456789abcdef01234567", "2026-07-14T10:30:45Z",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment, err := buildEnvironment(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ldflags, _ := info.LDFlags()
+	for name, want := range map[string]string{
+		buildinfo.VersionEnvironment:    info.Version,
+		buildinfo.CommitEnvironment:     info.Commit,
+		buildinfo.BuildTimeEnvironment:  info.BuildTime,
+		"VEQRI_BUILDINFO_LDFLAGS":       ldflags,
+		"VEQRI_DESKTOP_PRODUCT_VERSION": "1.2.3",
+		"VEQRI_DESKTOP_BUILD_VERSION":   info.Version,
+		"VEQRI_DESKTOP_BUILD_COMMIT":    info.Commit,
+	} {
+		if got := environment[name]; got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestStageBuildInfoWritesPublicManifest(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	info := buildinfo.Development()
+	path, err := stageBuildInfo(root, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != filepath.Join(root, "build", "release", "buildinfo.json") {
+		t.Fatalf("manifest path = %q", path)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded buildinfo.Info
+	if err := json.Unmarshal(contents, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded != info {
+		t.Fatalf("manifest = %+v, want %+v", decoded, info)
 	}
 }
 

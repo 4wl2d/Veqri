@@ -32,7 +32,7 @@ Packaged Core/CLI and desktop-edge smoke after a native build:
 make release-check
 ```
 
-This starts the compiled Core with an isolated data directory, then checks readiness, CLI health/diagnostics, desktop protocol-v1 snapshot loading, and a committed safe settings action. The Linux/macOS/Windows CI matrix and artifact scope are documented in [RELEASE.md](RELEASE.md).
+This starts the compiled Core with an isolated data directory, verifies that `veqri version --json`, Core health, and the desktop protocol-v1 snapshot report the same version, commit, and build time, then checks readiness, diagnostics, and a committed safe settings action. The Linux/macOS/Windows CI matrix and artifact scope are documented in [RELEASE.md](RELEASE.md).
 
 Network-backed dependency vulnerability checks:
 

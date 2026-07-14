@@ -7,6 +7,7 @@ toolchain go1.26.5
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/mod v0.36.0
 	golang.org/x/sys v0.45.0
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.82.0

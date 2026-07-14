@@ -80,6 +80,18 @@ describe("authenticated HTTP gateway", () => {
     await expect(gateway.loadSnapshot()).rejects.toMatchObject({ kind: "protocol" });
   });
 
+  it("rejects snapshots without canonical Core build metadata", async () => {
+    const malformed = createMockSnapshot() as unknown as Record<string, unknown>;
+    const core = malformed.core as Record<string, unknown>;
+    delete core.commit;
+    const gateway = new AuthenticatedHttpGateway({
+      config: { mode: "live", api_base_url: "http://127.0.0.1:7342", auth_token: "secret" },
+      fetchImplementation: vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(malformed), { status: 200 })),
+    });
+
+    await expect(gateway.loadSnapshot()).rejects.toMatchObject({ kind: "protocol" });
+  });
+
   it("classifies a successful non-JSON response as a protocol error", async () => {
     const gateway = new AuthenticatedHttpGateway({
       config: { mode: "live", api_base_url: "http://127.0.0.1:7342", auth_token: "secret" },

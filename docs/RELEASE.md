@@ -12,17 +12,18 @@ Veqri ships one user-facing desktop application whose executable also contains a
 | Windows x64 | Windows Server 2025 native build and standalone/managed-Core runtime smoke | `veqri-windows-x64` containing `veqri-desktop.exe` | Authenticode signing and installer UX |
 | Linux ARM64 / Windows ARM64 | Core and CLI are source-buildable; native Wails support is upstream-capable | none | add stable native-runner gates before claiming release support |
 
-The artifacts are produced by `.github/workflows/ci.yml` on push, pull request, or manual dispatch and retained for 14 days. Unix executables and the macOS app bundle are wrapped in `tar.gz` so executable modes survive artifact download; Windows uses ZIP. Each main desktop archive contains one launchable application. A separate `*-service-tools` artifact contains standalone Core, CLI, service templates, and deployment instructions for headless/advanced installs, avoiding filename and lifecycle conflicts with the desktop app. The archives are unsigned CI artifacts, not a substitute for signed installers. A platform is considered gated only after its native job passes on that operating system; local cross-compilation alone does not count.
+The artifacts are produced by `.github/workflows/ci.yml` on push, pull request, or manual dispatch and retained for 14 days. Unix executables and the macOS app bundle are wrapped in `tar.gz` so executable modes survive artifact download; Windows uses ZIP. Each main desktop archive contains one launchable application and `buildinfo.json`. A separate `*-service-tools` artifact contains standalone Core, CLI, the same build manifest, service templates, and deployment instructions for headless/advanced installs, avoiding filename and lifecycle conflicts with the desktop app. The archives are unsigned CI artifacts, not a substitute for signed installers. A platform is considered gated only after its native job passes on that operating system; local cross-compilation alone does not count.
 
 ## What the packaged-runtime smoke proves
 
 `scripts/release-smoke.go` runs the built CLI against Core in an isolated temporary data directory and workspace. CI invokes it once with the standalone daemon and once with the private managed-Core mode inside the packaged desktop executable. It verifies:
 
-1. Core reaches `/readyz`.
-2. The built CLI can read public health and authenticated diagnostics.
-3. The authenticated desktop snapshot matches protocol v1.
-4. A safe `settings.update` action commits and is visible in the next snapshot.
-5. Core can be stopped after the scenario.
+1. `veqri version --json`, `/healthz`, and the desktop snapshot report exactly the same version, commit, and build time.
+2. Core reaches `/readyz`.
+3. The built CLI can read public health and authenticated diagnostics.
+4. The authenticated desktop snapshot matches protocol v1.
+5. A safe `settings.update` action commits and is visible in the next snapshot.
+6. Core can be stopped after the scenario.
 
 The smoke does not launch a graphical WebView, install a background service, exercise a real model, or validate code signing. Those checks remain separate because CI runners cannot honestly substitute for an installed end-user session.
 
@@ -42,13 +43,22 @@ go run ./cmd/veqri-build android
 go run ./cmd/veqri-build all
 ```
 
+The canonical Core, CLI, and desktop outputs from these commands use the development identity `0.1.0-dev`; Android release identity is outside this builder. Consequently, `--release android` and `--release all` fail closed—build `binaries` and `desktop` explicitly for the currently versioned release artifacts. Release metadata is accepted only with an explicit gate:
+
+```sh
+VEQRI_VERSION=0.1.0-rc.1 \
+VEQRI_COMMIT="$(git rev-parse HEAD)" \
+VEQRI_BUILD_TIME="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+go run ./cmd/veqri-build --release desktop
+```
+
+`VEQRI_VERSION` must be a bare SemVer, `VEQRI_COMMIT` a full lowercase hexadecimal revision, and `VEQRI_BUILD_TIME` RFC3339. Partial metadata, release metadata without `--release`, and `--release` with development defaults all fail before a compiler, npm, or Gradle subprocess starts.
+
 On Windows, where `make` is not routinely installed, use the equivalent commands from PowerShell:
 
 ```powershell
 go run ./cmd/veqri-build desktop
-New-Item -ItemType Directory -Force build/bin | Out-Null
-go build -trimpath -o build/bin/veqri-core.exe ./cmd/veqri-core
-go build -trimpath -o build/bin/veqri.exe ./cmd/veqri-cli
+go run ./cmd/veqri-build binaries
 go run ./scripts/release-smoke.go
 go run ./scripts/release-smoke.go --core build/release/veqri-desktop.exe --core-arg=--veqri-managed-core
 ```

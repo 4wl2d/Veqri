@@ -24,6 +24,7 @@ import (
 	"github.com/veqri/veqri/core/tasks"
 	"github.com/veqri/veqri/core/voice"
 	"github.com/veqri/veqri/internal/api"
+	"github.com/veqri/veqri/internal/buildinfo"
 	"github.com/veqri/veqri/internal/config"
 	"github.com/veqri/veqri/internal/stream"
 	"github.com/veqri/veqri/tools/shell"
@@ -168,7 +169,7 @@ func New(t testing.TB, options Options) *Fixture {
 		WorkerCount:         max(workers, 1),
 		ShutdownTimeout:     time.Second,
 	}
-	server := api.NewServer(cfg, store, AdminToken, runtimeEngine, registry, policyEngine,
+	server := api.NewServer(cfg, buildinfo.Development(), store, AdminToken, runtimeEngine, registry, policyEngine,
 		shellExecutor, hub, media, tts, logger)
 	server.StartBackground(ctx)
 	httpServer := httptest.NewServer(server.Handler())

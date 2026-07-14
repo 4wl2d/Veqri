@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/veqri/veqri/internal/auth"
+	"github.com/veqri/veqri/internal/buildinfo"
 )
 
 const protocolVersion = "1"
@@ -35,6 +36,10 @@ func main() {
 }
 
 func run(arguments []string) error {
+	info, err := buildinfo.Current()
+	if err != nil {
+		return fmt.Errorf("invalid build information: %w", err)
+	}
 	if len(arguments) == 0 {
 		printUsage()
 		return errors.New("a command is required")
@@ -42,6 +47,9 @@ func run(arguments []string) error {
 	if arguments[0] == "help" || arguments[0] == "-h" || arguments[0] == "--help" {
 		printUsage()
 		return nil
+	}
+	if arguments[0] == "version" {
+		return printVersion(arguments[1:], os.Stdout, info)
 	}
 	cli, err := newClient()
 	if err != nil {
@@ -77,6 +85,22 @@ func run(arguments []string) error {
 		printUsage()
 		return fmt.Errorf("unknown command %q", arguments[0])
 	}
+}
+
+func printVersion(arguments []string, writer io.Writer, info buildinfo.Info) error {
+	flags := flag.NewFlagSet("version", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	jsonOutput := flags.Bool("json", false, "print machine-readable build information")
+	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 {
+		return errors.New("usage: veqri version [--json]")
+	}
+	if *jsonOutput {
+		encoder := json.NewEncoder(writer)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(info)
+	}
+	_, err := fmt.Fprintln(writer, info.Version)
+	return err
 }
 
 type emitOptions struct {
@@ -392,6 +416,7 @@ func env(name, fallback string) string {
 const usageText = `Veqri CLI
 
 Usage:
+  veqri version [--json]
   veqri status
   veqri ask [--wait] [--agents id,id] "request"
   veqri emit EVENT_TYPE --data file.json [--task]

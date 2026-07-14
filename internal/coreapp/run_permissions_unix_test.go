@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/veqri/veqri/internal/buildinfo"
 )
 
 func TestRunDoesNotTouchDataDirectoryBeforeListenerReservation(t *testing.T) {
@@ -30,7 +32,7 @@ func TestRunDoesNotTouchDataDirectoryBeforeListenerReservation(t *testing.T) {
 	t.Setenv("VEQRI_REMOTE_AGENT_ENDPOINT", "")
 	t.Setenv("VEQRI_REMOTE_AGENT_TOKEN_REF", "")
 
-	err = Run(context.Background(), "test")
+	err = Run(context.Background(), buildinfo.Development())
 	if err == nil || !strings.Contains(err.Error(), "listen on") {
 		t.Fatalf("Run() error = %v, want listener collision", err)
 	}
@@ -83,7 +85,7 @@ func TestRunSecuresDataDirectoryWithConfiguredTokenAndMemoryDatabase(t *testing.
 
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
-	go func() { result <- Run(ctx, "test") }()
+	go func() { result <- Run(ctx, buildinfo.Development()) }()
 
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()

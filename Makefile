@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: generate fmt build package package-all release-check test test-go test-integration test-desktop test-android lint run-core run-desktop android-debug connector-simulators clean
+.PHONY: generate fmt binaries build package package-all release-check test test-go test-integration test-desktop test-android lint run-core run-desktop android-debug connector-simulators clean
 
 generate:
 	./scripts/generate-protocol.sh
@@ -9,10 +9,10 @@ fmt:
 	gofmt -w $$(find . -name '*.go' -not -path './apps/*')
 	cd apps/desktop && npm run format --if-present
 
-build: generate
-	mkdir -p build/bin
-	go build -trimpath -o build/bin/veqri-core ./cmd/veqri-core
-	go build -trimpath -o build/bin/veqri ./cmd/veqri-cli
+binaries: generate
+	go run ./cmd/veqri-build binaries
+
+build: binaries
 	cd apps/desktop && npm ci && npm run build
 
 package:

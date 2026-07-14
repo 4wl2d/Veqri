@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"io"
 	"log"
@@ -9,20 +10,35 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/veqri/veqri/internal/buildinfo"
 	"github.com/veqri/veqri/internal/coreapp"
 	"github.com/veqri/veqri/internal/managedcore"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/linux"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 )
 
-const managedCoreArgument = "--veqri-managed-core"
+const (
+	desktopBundleIdentifier = "ai.veqri.desktop"
+	managedCoreArgument     = "--veqri-managed-core"
+)
 
-var version = "0.1.0-dev"
+// appIcon is the single checked-in source for Wails runtime and platform
+// packaging icons. Wails also converts this PNG to ICNS and ICO resources.
+//
+//go:embed build/appicon.png
+var appIcon []byte
 
 func main() {
+	buildInfo, err := buildinfo.Current()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "veqri-desktop:", err)
+		os.Exit(1)
+	}
 	if len(os.Args) == 2 && os.Args[1] == managedCoreArgument {
-		if err := runManagedCore(); err != nil {
+		if err := runManagedCoreWithBuildInfo(buildInfo); err != nil {
 			fmt.Fprintln(os.Stderr, "veqri-core:", err)
 			os.Exit(1)
 		}
@@ -30,7 +46,13 @@ func main() {
 	}
 
 	bridge := &Bridge{}
-	if err := wails.Run(&options.App{
+	if err := wails.Run(newApplicationOptions(bridge)); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func newApplicationOptions(bridge *Bridge) *options.App {
+	return &options.App{
 		Title:       "Veqri",
 		Width:       1440,
 		Height:      940,
@@ -40,8 +62,17 @@ func main() {
 		Bind:        []any{bridge},
 		OnStartup:   bridge.Startup,
 		OnShutdown:  bridge.Shutdown,
-	}); err != nil {
-		log.Fatal(err)
+		Linux: &linux.Options{
+			Icon:             appIcon,
+			ProgramName:      desktopBundleIdentifier,
+			WebviewGpuPolicy: linux.WebviewGpuPolicyNever,
+		},
+		Mac: &mac.Options{
+			About: &mac.AboutInfo{
+				Title: "Veqri",
+				Icon:  appIcon,
+			},
+		},
 	}
 }
 
@@ -49,6 +80,14 @@ func main() {
 // GUI starts this hidden mode with a pipe on stdin; closing the pipe cancels
 // Core even on Windows, where POSIX process signals are not portable.
 func runManagedCore() error {
+	buildInfo, err := buildinfo.Current()
+	if err != nil {
+		return fmt.Errorf("load build identity: %w", err)
+	}
+	return runManagedCoreWithBuildInfo(buildInfo)
+}
+
+func runManagedCoreWithBuildInfo(buildInfo buildinfo.Info) error {
 	if os.Getenv(managedcore.OwnerTokenEnvironment) == "" {
 		return fmt.Errorf("%s is required; managed Core may only be started by the desktop supervisor", managedcore.OwnerTokenEnvironment)
 	}
@@ -58,5 +97,5 @@ func runManagedCore() error {
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		cancel()
 	}()
-	return coreapp.Run(ctx, version)
+	return coreapp.Run(ctx, buildInfo)
 }
