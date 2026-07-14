@@ -4,7 +4,7 @@
 
 `protocol/proto/veqri/v1` is canonical for shared semantics. Go and Kotlin-compatible options are generated from the same sources. The first edge transport is JSON over HTTP/WebSocket; a gRPC service definition is included for strongly typed local/remote adapters.
 
-Version negotiation uses major `1`, minor `0`, and a capability list. HTTP clients send `X-Veqri-Protocol-Version: 1`. Incompatible majors receive HTTP 426. WebSocket clients negotiate `veqri.v1`.
+Version negotiation uses major `1`, minor `0`, and a capability list. Every authenticated HTTP request sends `X-Veqri-Protocol-Version: 1`; a missing or malformed header, or an incompatible major, receives HTTP 426. Every WebSocket client must offer `veqri.v1`; the Android device WebSocket also sends the explicit protocol header during its authenticated upgrade.
 
 ## Identity and time
 
@@ -16,12 +16,13 @@ Version negotiation uses major `1`, minor `0`, and a capability list. HTTP clien
 
 ## HTTP surfaces
 
-- `/healthz`, `/readyz`: unauthenticated minimal health.
-- `/v1/pairings`, `/v1/pairing/claim`: admin pairing creation and public one-time claim. Android includes `retain_transcript`; consuming the code, creating the device, and storing that device privacy default are one transaction, so the HTTP 201 response acknowledges all three.
+- `/healthz`, `/readyz`: unauthenticated minimal health. `/metrics` is administrator-only.
+- `/v1/pairings`: admin pairing creation. `/v1/pairing/claim` and `/v1/pairings/claim` are public one-time claim aliases with shared rolling limits of five admitted attempts per peer IPv4 address or IPv6 `/64`, and thirty globally per minute. Android includes `retain_transcript`; consuming the code, creating the device, and storing that device privacy default are one transaction, so the HTTP 201 response acknowledges all three.
 - `/v1/devices/self/credential-rotation/*`: device-authenticated two-phase credential rotation.
-- `/v1/ask`, `/v1/events`: authenticated requests/local events.
-- `/v1/tasks`, `/v1/tasks/{id}/priority`, `/v1/tasks/{id}/dismiss`, `/v1/approvals`, `/v1/tools/shell`: durable task and approval control. Priority is bounded to `-100..100`; dismissal hides only terminal tasks from default lists and does not delete their correlated audit history.
-- `/v1/voice/*`: call control and deterministic transcript path.
+- `/v1/ask`: administrator or paired-owner requests. `/v1/events` is administrator-only because it assigns local trust.
+- `/v1/tasks`, `/v1/tasks/{id}/priority`, `/v1/tasks/{id}/dismiss`, `/v1/approvals`: administrator or paired-owner durable task and approval control. Priority is bounded to `-100..100`; dismissal hides only terminal tasks from default lists and does not delete their correlated audit history. Cancel, retry, priority, and dismissal changes commit with their actor audit entry.
+- `/v1/tools/shell`, `/v1/devices`, `/v1/audit`, `/v1/diagnostics`: administrator-only low-level and operational surfaces.
+- `/v1/voice/calls`: administrator-only call creation. Existing session control is available to the administrator and its target device.
 - `/v1/connectors/*`, `/v1/webhooks/*`: verified ingress and simulators.
 - `/v1/device/events`: Android command/event WebSocket.
 - `/api/v1/desktop/*`: desktop snapshot/actions/event contract.

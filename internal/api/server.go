@@ -47,6 +47,9 @@ type Server struct {
 	startedAt       time.Time
 	limitMu         sync.Mutex
 	limiters        map[string]*requestLimiter
+	pairingLimitMu  sync.Mutex
+	pairingAttempts map[string][]time.Time
+	pairingGlobal   []time.Time
 	voiceMu         sync.Mutex
 	voiceCancels    map[string]context.CancelFunc
 	voiceByConv     map[string]string
@@ -70,7 +73,8 @@ func NewServer(cfg config.Config, store *persistence.Store, adminToken string,
 		adminToken: adminToken, runtime: runtime, registry: registry, policy: policyEngine,
 		shell: shellExecutor, hub: hub, media: media, tts: tts, logger: logger,
 		startedAt: time.Now().UTC(), limiters: make(map[string]*requestLimiter),
-		voiceCancels: make(map[string]context.CancelFunc), voiceByConv: make(map[string]string),
+		pairingAttempts: make(map[string][]time.Time),
+		voiceCancels:    make(map[string]context.CancelFunc), voiceByConv: make(map[string]string),
 		voiceQueues: make(map[string][]voiceDeliveryJob), voiceSpeaking: make(map[string]bool),
 		mediaSessions: make(map[string]voice.MediaSession),
 		deviceSockets: make(map[string]map[*websocket.Conn]struct{}),
@@ -162,9 +166,10 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /readyz", s.handleReady)
-	mux.HandleFunc("GET /metrics", s.handleMetrics)
-	mux.HandleFunc("POST /v1/pairings/claim", s.handleClaimPairing)
-	mux.HandleFunc("POST /v1/pairing/claim", s.handleClaimPairing)
+	mux.Handle("GET /metrics", s.adminOnly(http.HandlerFunc(s.handleMetrics)))
+	pairingClaim := s.pairingClaimRateLimit(http.HandlerFunc(s.handleClaimPairing))
+	mux.Handle("POST /v1/pairings/claim", pairingClaim)
+	mux.Handle("POST /v1/pairing/claim", pairingClaim)
 	mux.HandleFunc("POST /v1/connectors/slack/events", s.handleSlackEvent)
 	mux.HandleFunc("POST /v1/connectors/mattermost/outgoing", s.handleMattermostEvent)
 	mux.HandleFunc("POST /v1/webhooks/{connectorID}", s.handleGenericWebhook)
@@ -172,14 +177,14 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/protocol/negotiate", s.authenticated(http.HandlerFunc(s.handleNegotiate)))
 	mux.Handle("POST /v1/connectors/simulate/{kind}", s.adminOnly(http.HandlerFunc(s.handleConnectorSimulator)))
 	mux.Handle("POST /v1/pairings", s.adminOnly(http.HandlerFunc(s.handleCreatePairing)))
-	mux.Handle("GET /v1/devices", s.authenticated(http.HandlerFunc(s.handleDevices)))
+	mux.Handle("GET /v1/devices", s.adminOnly(http.HandlerFunc(s.handleDevices)))
 	mux.Handle("POST /v1/devices/self/credential-rotation/prepare", s.authenticated(http.HandlerFunc(s.handlePrepareDeviceCredentialRotation)))
 	mux.HandleFunc("POST /v1/devices/self/credential-rotation/confirm", s.handleConfirmDeviceCredentialRotation)
 	mux.Handle("POST /v1/devices/self/credential-rotation/cancel", s.authenticated(http.HandlerFunc(s.handleCancelDeviceCredentialRotation)))
 	mux.Handle("POST /v1/devices/{id}/revoke", s.adminOnly(http.HandlerFunc(s.handleRevokeDevice)))
 	mux.Handle("POST /v1/ask", s.authenticated(http.HandlerFunc(s.handleAsk)))
 	mux.Handle("PUT /v1/conversations/{id}/transcript-retention", s.authenticated(http.HandlerFunc(s.handleTranscriptRetention)))
-	mux.Handle("POST /v1/events", s.authenticated(http.HandlerFunc(s.handleLocalEvent)))
+	mux.Handle("POST /v1/events", s.adminOnly(http.HandlerFunc(s.handleLocalEvent)))
 	mux.Handle("POST /v1/events/{id}/replay", s.adminOnly(http.HandlerFunc(s.handleReplayEvent)))
 	mux.Handle("GET /v1/tasks", s.authenticated(http.HandlerFunc(s.handleTasks)))
 	mux.Handle("GET /v1/tasks/{id}", s.authenticated(http.HandlerFunc(s.handleTask)))
@@ -187,19 +192,19 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /v1/tasks/{id}/cancel", s.authenticated(http.HandlerFunc(s.handleCancelTask)))
 	mux.Handle("POST /v1/tasks/{id}/priority", s.authenticated(http.HandlerFunc(s.handleTaskPriority)))
 	mux.Handle("POST /v1/tasks/{id}/dismiss", s.authenticated(http.HandlerFunc(s.handleDismissTask)))
-	mux.Handle("POST /v1/tools/shell", s.authenticated(http.HandlerFunc(s.handleShell)))
+	mux.Handle("POST /v1/tools/shell", s.adminOnly(http.HandlerFunc(s.handleShell)))
 	mux.Handle("GET /v1/approvals", s.authenticated(http.HandlerFunc(s.handleApprovals)))
 	mux.Handle("POST /v1/approvals/{id}/approve", s.authenticated(http.HandlerFunc(s.handleApprove)))
 	mux.Handle("POST /v1/approvals/{id}/deny", s.authenticated(http.HandlerFunc(s.handleDeny)))
-	mux.Handle("POST /v1/voice/calls", s.authenticated(http.HandlerFunc(s.handleStartCall)))
+	mux.Handle("POST /v1/voice/calls", s.adminOnly(http.HandlerFunc(s.handleStartCall)))
 	mux.Handle("GET /v1/voice/sessions/{id}", s.authenticated(http.HandlerFunc(s.handleVoiceSession)))
 	mux.Handle("POST /v1/voice/sessions/{id}/answer", s.authenticated(http.HandlerFunc(s.handleAnswerCall)))
 	mux.Handle("POST /v1/voice/sessions/{id}/transcript", s.authenticated(http.HandlerFunc(s.handleVoiceTranscript)))
 	mux.Handle("POST /v1/voice/sessions/{id}/interrupt", s.authenticated(http.HandlerFunc(s.handleInterruptVoice)))
 	mux.Handle("POST /v1/voice/sessions/{id}/reconnect", s.authenticated(http.HandlerFunc(s.handleReconnectVoice)))
 	mux.Handle("POST /v1/voice/sessions/{id}/end", s.authenticated(http.HandlerFunc(s.handleEndVoice)))
-	mux.Handle("GET /v1/audit", s.authenticated(http.HandlerFunc(s.handleAudit)))
-	mux.Handle("GET /v1/diagnostics", s.authenticated(http.HandlerFunc(s.handleDiagnostics)))
+	mux.Handle("GET /v1/audit", s.adminOnly(http.HandlerFunc(s.handleAudit)))
+	mux.Handle("GET /v1/diagnostics", s.adminOnly(http.HandlerFunc(s.handleDiagnostics)))
 	mux.Handle("POST /v1/emergency-stop", s.adminOnly(http.HandlerFunc(s.handleEmergencyStop)))
 	mux.Handle("GET /v1/stream", http.HandlerFunc(s.handleWebSocket))
 	mux.Handle("GET /v1/device/events", http.HandlerFunc(s.handleDeviceWebSocket))
@@ -246,7 +251,93 @@ func (s *Server) adminOnly(next http.Handler) http.Handler {
 }
 
 func supportedProtocol(value string) bool {
-	return value == "" || value == "1" || strings.HasPrefix(value, "1.")
+	if value == "1" {
+		return true
+	}
+	major, minor, found := strings.Cut(value, ".")
+	if !found || major != "1" || minor == "" {
+		return false
+	}
+	for _, character := range minor {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Server) pairingClaimRateLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		now := time.Now().UTC()
+		if !s.allowPairingClaim(pairingClaimAddress(request), now) {
+			writer.Header().Set("Retry-After", "60")
+			writeError(writer, http.StatusTooManyRequests, "pairing_rate_limited", "pairing claim rate exceeded")
+			return
+		}
+		next.ServeHTTP(writer, request)
+	})
+}
+
+func pairingClaimAddress(request *http.Request) string {
+	address := requestIP(request)
+	withoutZone, _, _ := strings.Cut(address, "%")
+	ip := net.ParseIP(withoutZone)
+	if ip == nil {
+		return address
+	}
+	if ipv4 := ip.To4(); ipv4 != nil {
+		return ipv4.String()
+	}
+	return ip.Mask(net.CIDRMask(64, 128)).String() + "/64"
+}
+
+const (
+	pairingClaimWindow      = time.Minute
+	pairingClaimsPerIP      = 5
+	pairingClaimsGlobal     = 30
+	pairingAttemptMapTarget = 256
+)
+
+func (s *Server) allowPairingClaim(address string, now time.Time) bool {
+	s.pairingLimitMu.Lock()
+	defer s.pairingLimitMu.Unlock()
+	cutoff := now.Add(-pairingClaimWindow)
+	s.pairingGlobal = recentAttempts(s.pairingGlobal, cutoff)
+	// Check the global ceiling before allocating per-address state. This keeps
+	// an exhausted global limiter from becoming an attacker-controlled map-growth path.
+	if len(s.pairingGlobal) >= pairingClaimsGlobal {
+		return false
+	}
+	if s.pairingAttempts == nil {
+		s.pairingAttempts = make(map[string][]time.Time)
+	}
+	attempts := recentAttempts(s.pairingAttempts[address], cutoff)
+	if len(attempts) >= pairingClaimsPerIP {
+		s.pairingAttempts[address] = attempts
+		return false
+	}
+	attempts = append(attempts, now)
+	s.pairingAttempts[address] = attempts
+	s.pairingGlobal = append(s.pairingGlobal, now)
+	if len(s.pairingAttempts) > pairingAttemptMapTarget {
+		for candidate, timestamps := range s.pairingAttempts {
+			timestamps = recentAttempts(timestamps, cutoff)
+			if len(timestamps) == 0 {
+				delete(s.pairingAttempts, candidate)
+			} else {
+				s.pairingAttempts[candidate] = timestamps
+			}
+		}
+	}
+	return true
+}
+
+func recentAttempts(attempts []time.Time, cutoff time.Time) []time.Time {
+	firstRecent := 0
+	for firstRecent < len(attempts) && !attempts[firstRecent].After(cutoff) {
+		firstRecent++
+	}
+	return attempts[firstRecent:]
 }
 
 func (s *Server) securityHeaders(next http.Handler) http.Handler {
@@ -370,6 +461,10 @@ func (s *Server) handleWebSocket(writer http.ResponseWriter, request *http.Reque
 		writeError(writer, http.StatusUnauthorized, "unauthorized", "WebSocket authentication required")
 		return
 	}
+	if !hasWebSocketProtocol(request.Header.Values("Sec-WebSocket-Protocol"), "veqri.v1") {
+		writeError(writer, http.StatusUpgradeRequired, "websocket_protocol", "WebSocket subprotocol veqri.v1 is required")
+		return
+	}
 	connection, err := websocket.Accept(writer, request, &websocket.AcceptOptions{
 		Subprotocols:   []string{"veqri.v1"},
 		OriginPatterns: desktopWebSocketOrigins(),
@@ -422,6 +517,17 @@ func websocketProtocolToken(header string) string {
 		}
 	}
 	return ""
+}
+
+func hasWebSocketProtocol(headers []string, wanted string) bool {
+	for _, header := range headers {
+		for _, protocol := range strings.Split(header, ",") {
+			if strings.TrimSpace(protocol) == wanted {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func writeWebSocketJSON(ctx context.Context, connection *websocket.Conn, value any) error {

@@ -22,7 +22,10 @@ import (
 	"time"
 )
 
-const defaultMaxHTTPResponseBytes int64 = 1 << 20
+const (
+	defaultMaxHTTPResponseBytes int64 = 1 << 20
+	coreProtocolVersion               = "1"
+)
 
 var (
 	ErrNonLocalEndpoint = errors.New("local event HTTP endpoint must resolve syntactically to localhost or a loopback IP")
@@ -158,6 +161,7 @@ func (c *HTTPClient) Emit(ctx context.Context, event Event) (Receipt, error) {
 	copyHTTPHeaders(request.Header, c.headers)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
+	request.Header.Set("X-Veqri-Protocol-Version", coreProtocolVersion)
 	request.Header.Set("X-Veqri-Timestamp", timestamp)
 	request.Header.Set("X-Veqri-Nonce", nonce)
 	request.Header.Set("X-Veqri-Signature", signature)
