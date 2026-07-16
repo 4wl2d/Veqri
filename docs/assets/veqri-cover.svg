@@ -1,38 +1,41 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
   <title id="title">Veqri</title>
-  <desc id="desc">Voice Event Queue Relay Intelligence. A local-first AI orchestrator for desktop, Android, CLI, and messaging connectors.</desc>
+  <desc id="desc">Veqri is a local-first personal AI orchestrator that turns voice or text requests into durable, approval-gated workflows across desktop, Android, CLI, and messaging connectors.</desc>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#090A0D"/>
-      <stop offset="0.55" stop-color="#10121A"/>
-      <stop offset="1" stop-color="#0B0E17"/>
+      <stop offset="0.56" stop-color="#11131A"/>
+      <stop offset="1" stop-color="#0A0D15"/>
     </linearGradient>
     <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#A79BFF"/>
-      <stop offset="0.52" stop-color="#8C7CFF"/>
-      <stop offset="1" stop-color="#6550D8"/>
+      <stop offset="0" stop-color="#B0A6FF"/>
+      <stop offset="0.5" stop-color="#8C7CFF"/>
+      <stop offset="1" stop-color="#6752DC"/>
     </linearGradient>
-    <linearGradient id="signal" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#8C7CFF" stop-opacity="0.05"/>
-      <stop offset="0.35" stop-color="#8C7CFF"/>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#171923" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#0F1118" stop-opacity="0.98"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#A79BFF"/>
       <stop offset="1" stop-color="#69B8FF"/>
     </linearGradient>
-    <radialGradient id="glowPurple" cx="0" cy="0" r="1" gradientTransform="translate(225 85) rotate(34) scale(560 430)">
-      <stop stop-color="#8C7CFF" stop-opacity="0.20"/>
+    <radialGradient id="glowPurple" cx="0" cy="0" r="1" gradientTransform="translate(230 86) rotate(35) scale(560 420)">
+      <stop stop-color="#8C7CFF" stop-opacity="0.2"/>
       <stop offset="1" stop-color="#8C7CFF" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="glowBlue" cx="0" cy="0" r="1" gradientTransform="translate(1115 535) rotate(-132) scale(440 330)">
-      <stop stop-color="#69B8FF" stop-opacity="0.16"/>
+    <radialGradient id="glowBlue" cx="0" cy="0" r="1" gradientTransform="translate(1130 540) rotate(-135) scale(430 330)">
+      <stop stop-color="#69B8FF" stop-opacity="0.14"/>
       <stop offset="1" stop-color="#69B8FF" stop-opacity="0"/>
     </radialGradient>
-    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-      <circle cx="1" cy="1" r="1" fill="#FFFFFF" fill-opacity="0.055"/>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#FFFFFF" fill-opacity="0.045"/>
     </pattern>
-    <filter id="shadow" x="-60%" y="-60%" width="220%" height="220%">
-      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#000000" flood-opacity="0.45"/>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#000000" flood-opacity="0.46"/>
     </filter>
-    <filter id="softGlow" x="-80%" y="-80%" width="260%" height="260%">
-      <feGaussianBlur stdDeviation="8"/>
+    <filter id="softGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="12"/>
     </filter>
   </defs>
 
@@ -42,74 +45,108 @@
   <rect x="1" y="1" width="1278" height="638" rx="31" fill="none" stroke="#FFFFFF" stroke-opacity="0.08"/>
   <rect x="32" y="32" width="1216" height="576" rx="24" fill="url(#grid)"/>
 
-  <g transform="translate(80 70)">
+  <g transform="translate(80 68)">
     <rect width="54" height="54" rx="16" fill="url(#accent)" filter="url(#shadow)"/>
     <path d="M30.5 10.5 16.7 29.1h9.2l-2.7 14.4 14.1-20.2h-9.1l2.3-12.8Z" fill="#FFFFFF"/>
     <text x="70" y="35" fill="#F0F1F5" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="25" font-weight="750" letter-spacing="-0.5">Veqri</text>
   </g>
 
   <g font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
-    <text x="80" y="205" fill="#A79BFF" font-size="16" font-weight="750" letter-spacing="3.4">LOCAL-FIRST AI ORCHESTRATOR</text>
-    <text x="74" y="310" fill="#F4F4F7" font-size="96" font-weight="780" letter-spacing="-5.5">Veqri</text>
-    <text x="80" y="354" fill="#B6BAC4" font-size="25" font-weight="520" letter-spacing="0.2">Voice Event Queue Relay Intelligence</text>
-    <text x="80" y="408" fill="#979CA9" font-size="19" font-weight="430">One private control plane for agents, voice, tools,</text>
-    <text x="80" y="438" fill="#979CA9" font-size="19" font-weight="430">and every screen you work from.</text>
+    <text x="80" y="201" fill="#A79BFF" font-size="16" font-weight="750" letter-spacing="3.2">LOCAL-FIRST PERSONAL AI</text>
+    <text x="74" y="306" fill="#F4F4F7" font-size="96" font-weight="780" letter-spacing="-5.5">Veqri</text>
+    <text x="80" y="350" fill="#B8BBC5" font-size="24" font-weight="520" letter-spacing="0.1">Voice Event Queue Relay Intelligence</text>
+    <text x="80" y="407" fill="#989DA9" font-size="19" font-weight="430">Private orchestration for voice, agents, tools,</text>
+    <text x="80" y="437" fill="#989DA9" font-size="19" font-weight="430">and durable tasks across every screen.</text>
 
-    <g transform="translate(80 494)">
-      <rect width="170" height="42" rx="21" fill="#111319" stroke="#343846"/>
+    <g transform="translate(80 493)">
+      <rect width="162" height="42" rx="21" fill="#111319" stroke="#343846"/>
       <circle cx="22" cy="21" r="5" fill="#57D6A0"/>
-      <text x="37" y="27" fill="#D8DAE2" font-size="13" font-weight="700" letter-spacing="0.8">LOCAL BY DEFAULT</text>
+      <text x="37" y="27" fill="#D8DAE2" font-size="12.5" font-weight="700" letter-spacing="0.9">LOCAL FIRST</text>
     </g>
-    <g transform="translate(262 494)">
-      <rect width="156" height="42" rx="21" fill="#111319" stroke="#343846"/>
+    <g transform="translate(254 493)">
+      <rect width="174" height="42" rx="21" fill="#111319" stroke="#343846"/>
       <circle cx="22" cy="21" r="5" fill="#A79BFF"/>
-      <text x="37" y="27" fill="#D8DAE2" font-size="13" font-weight="700" letter-spacing="0.8">DURABLE TASKS</text>
+      <text x="37" y="27" fill="#D8DAE2" font-size="12.5" font-weight="700" letter-spacing="0.8">DURABLE TASKS</text>
     </g>
-    <g transform="translate(430 494)">
-      <rect width="205" height="42" rx="21" fill="#111319" stroke="#343846"/>
+    <g transform="translate(440 493)">
+      <rect width="190" height="42" rx="21" fill="#111319" stroke="#343846"/>
       <circle cx="22" cy="21" r="5" fill="#69B8FF"/>
-      <text x="37" y="27" fill="#D8DAE2" font-size="13" font-weight="700" letter-spacing="0.7">APPROVAL-GATED TOOLS</text>
+      <text x="37" y="27" fill="#D8DAE2" font-size="12.5" font-weight="700" letter-spacing="0.75">HUMAN APPROVALS</text>
     </g>
   </g>
 
-  <g transform="translate(718 106)" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
-    <rect x="61" y="42" width="398" height="382" rx="32" fill="#111319" fill-opacity="0.72" stroke="#343846" filter="url(#shadow)"/>
-    <rect x="86" y="67" width="348" height="332" rx="24" fill="#0D0E12" stroke="#252832"/>
+  <g transform="translate(724 82)" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <rect width="476" height="476" rx="32" fill="url(#panel)" stroke="#363A48" filter="url(#shadow)"/>
+    <rect x="1" y="1" width="474" height="474" rx="31" fill="none" stroke="#FFFFFF" stroke-opacity="0.035"/>
 
-    <path d="M121 147 C174 147 179 211 230 211 M121 319 C174 319 179 255 230 255 M389 147 C338 147 337 211 287 211 M389 319 C338 319 337 255 287 255" fill="none" stroke="#343846" stroke-width="2"/>
-    <path d="M140 233 H374" stroke="url(#signal)" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="152" cy="233" r="13" fill="#8C7CFF" fill-opacity="0.14" stroke="#8C7CFF"/>
-    <circle cx="210" cy="233" r="8" fill="#8C7CFF"/>
-    <circle cx="310" cy="233" r="8" fill="#69B8FF"/>
-    <circle cx="368" cy="233" r="13" fill="#69B8FF" fill-opacity="0.14" stroke="#69B8FF"/>
-
-    <circle cx="259" cy="233" r="69" fill="#8C7CFF" fill-opacity="0.08" filter="url(#softGlow)"/>
-    <circle cx="259" cy="233" r="58" fill="#161820" stroke="#8C7CFF" stroke-opacity="0.75" stroke-width="2"/>
-    <circle cx="259" cy="233" r="44" fill="url(#accent)"/>
-    <path d="M265 203 244 232h14l-4 25 21-32h-14l4-22Z" fill="#FFFFFF"/>
-    <text x="259" y="307" text-anchor="middle" fill="#F0F1F5" font-size="13" font-weight="800" letter-spacing="2.2">CORE</text>
+    <rect x="26" y="24" width="36" height="36" rx="11" fill="url(#accent)"/>
+    <path d="M46.2 31.5 36.8 44.2h6.3l-1.9 9.8 9.7-13.8h-6.3l1.6-8.7Z" fill="#FFFFFF"/>
+    <text x="76" y="47" fill="#EEF0F5" font-size="16" font-weight="720">Veqri Core</text>
+    <g transform="translate(322 25)">
+      <rect width="128" height="34" rx="17" fill="#10201A" stroke="#285E49"/>
+      <circle cx="18" cy="17" r="4" fill="#57D6A0"/>
+      <text x="30" y="21" fill="#8CE4BB" font-size="10.2" font-weight="750" letter-spacing="0.65">LOCAL · READY</text>
+    </g>
+    <path d="M26 76H450" stroke="#2B2E38"/>
 
     <g>
-      <rect x="96" y="94" width="111" height="49" rx="12" fill="#161820" stroke="#343846"/>
-      <circle cx="116" cy="118.5" r="5" fill="#57D6A0"/>
-      <text x="130" y="123" fill="#D8DAE2" font-size="13" font-weight="650">Android</text>
+      <rect x="26" y="94" width="424" height="84" rx="20" fill="#0C0E13" stroke="#2E3240"/>
+      <circle cx="61" cy="136" r="21" fill="#8C7CFF" fill-opacity="0.12" stroke="#8C7CFF" stroke-opacity="0.55"/>
+      <rect x="57.5" y="124" width="7" height="16" rx="3.5" fill="#B4AAFF"/>
+      <path d="M53.5 136v1.5a7.5 7.5 0 0 0 15 0V136M61 145v5M56.5 150h9" fill="none" stroke="#B4AAFF" stroke-width="1.8" stroke-linecap="round"/>
+      <text x="94" y="126" fill="#747A88" font-size="10.5" font-weight="720" letter-spacing="1.4">VOICE OR TEXT</text>
+      <text x="94" y="151" fill="#ECEEF4" font-size="16" font-weight="630">Plan and ship version 1.0</text>
+      <g stroke="url(#wave)" stroke-width="4" stroke-linecap="round">
+        <path d="M343 132v8"/>
+        <path d="M353 126v20"/>
+        <path d="M363 119v34"/>
+        <path d="M373 125v22"/>
+        <path d="M383 116v40"/>
+        <path d="M393 124v24"/>
+        <path d="M403 130v12"/>
+        <path d="M413 127v18"/>
+      </g>
     </g>
+
+    <text x="28" y="211" fill="#A9ADBA" font-size="10.5" font-weight="780" letter-spacing="1.35">DURABLE WORKFLOW</text>
+    <text x="448" y="211" text-anchor="end" fill="#646A78" font-size="9.5" font-weight="680" letter-spacing="0.8">PERSISTS THROUGH RESTARTS</text>
+
+    <path d="M53 238V352" stroke="#323643" stroke-width="2"/>
+
     <g>
-      <rect x="312" y="94" width="111" height="49" rx="12" fill="#161820" stroke="#343846"/>
-      <circle cx="332" cy="118.5" r="5" fill="#57D6A0"/>
-      <text x="346" y="123" fill="#D8DAE2" font-size="13" font-weight="650">Desktop</text>
+      <circle cx="53" cy="247" r="9" fill="#10251D" stroke="#57D6A0"/>
+      <path d="m49.5 247 2.3 2.3 4.8-5" fill="none" stroke="#57D6A0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="78" y="246" fill="#E5E7ED" font-size="14" font-weight="650">Understand the request</text>
+      <text x="78" y="266" fill="#737987" font-size="11.5" font-weight="450">Context gathered and stored locally</text>
+      <text x="428" y="252" text-anchor="end" fill="#73DFA9" font-size="10" font-weight="760" letter-spacing="1">DONE</text>
     </g>
+
     <g>
-      <rect x="96" y="324" width="111" height="49" rx="12" fill="#161820" stroke="#343846"/>
-      <circle cx="116" cy="348.5" r="5" fill="#A79BFF"/>
-      <text x="130" y="353" fill="#D8DAE2" font-size="13" font-weight="650">Connectors</text>
+      <circle cx="53" cy="303" r="9" fill="#1D1933" stroke="#A79BFF"/>
+      <circle cx="53" cy="303" r="3.5" fill="#A79BFF"/>
+      <circle cx="53" cy="303" r="18" fill="#8C7CFF" fill-opacity="0.08" filter="url(#softGlow)"/>
+      <text x="78" y="302" fill="#E5E7ED" font-size="14" font-weight="650">Run agents in parallel</text>
+      <text x="78" y="322" fill="#737987" font-size="11.5" font-weight="450">Research and build tasks stay recoverable</text>
+      <text x="428" y="308" text-anchor="end" fill="#B4AAFF" font-size="10" font-weight="760" letter-spacing="1">RUNNING</text>
     </g>
+
     <g>
-      <rect x="312" y="324" width="111" height="49" rx="12" fill="#161820" stroke="#343846"/>
-      <circle cx="332" cy="348.5" r="5" fill="#69B8FF"/>
-      <text x="346" y="353" fill="#D8DAE2" font-size="13" font-weight="650">CLI + tools</text>
+      <circle cx="53" cy="359" r="9" fill="#14202B" stroke="#69B8FF"/>
+      <path d="M53 353.5 57.5 355v3.5c0 3.2-1.8 5.5-4.5 7-2.7-1.5-4.5-3.8-4.5-7V355l4.5-1.5Z" fill="none" stroke="#69B8FF" stroke-width="1.4" stroke-linejoin="round"/>
+      <text x="78" y="358" fill="#E5E7ED" font-size="14" font-weight="650">Use a state-changing tool</text>
+      <text x="78" y="378" fill="#737987" font-size="11.5" font-weight="450">Paused before the side effect</text>
+      <g transform="translate(346 340)">
+        <rect width="82" height="32" rx="16" fill="#172333" stroke="#477CA7"/>
+        <text x="41" y="20.5" text-anchor="middle" fill="#86C9FF" font-size="10" font-weight="780" letter-spacing="0.9">APPROVE</text>
+      </g>
+    </g>
+
+    <g>
+      <rect x="26" y="401" width="424" height="49" rx="16" fill="#8C7CFF" fill-opacity="0.055" stroke="#343846"/>
+      <circle cx="53" cy="425.5" r="5" fill="#A79BFF"/>
+      <text x="69" y="429" fill="#C8CBD4" font-size="11.5" font-weight="680" letter-spacing="0.75">DESKTOP  ·  ANDROID  ·  CLI  ·  CONNECTORS</text>
     </g>
   </g>
 
-  <text x="1200" y="585" text-anchor="end" fill="#6C707D" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="650" letter-spacing="1.4">GO &#183; KOTLIN &#183; TYPESCRIPT</text>
+  <text x="1200" y="589" text-anchor="end" fill="#686D7A" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12.5" font-weight="650" letter-spacing="1.35">GO · KOTLIN · TYPESCRIPT</text>
 </svg>
