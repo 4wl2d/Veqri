@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">Veqri</title>
+  <desc id="desc">Voice Event Queue Relay Intelligence. A local-first AI orchestrator for desktop, Android, CLI, and messaging connectors.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#090A0D"/>
+      <stop offset="0.55" stop-color="#10121A"/>
+      <stop offset="1" stop-color="#0B0E17"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#A79BFF"/>
+      <stop offset="0.52" stop-color="#8C7CFF"/>
+      <stop offset="1" stop-color="#6550D8"/>
+    </linearGradient>
+    <linearGradient id="signal" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8C7CFF" stop-opacity="0.05"/>
+      <stop offset="0.35" stop-color="#8C7CFF"/>
+      <stop offset="1" stop-color="#69B8FF"/>
+    </linearGradient>
+    <radialGradient id="glowPurple" cx="0" cy="0" r="1" gradientTransform="translate(225 85) rotate(34) scale(560 430)">
+      <stop stop-color="#8C7CFF" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#8C7CFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowBlue" cx="0" cy="0" r="1" gradientTransform="translate(1115 535) rotate(-132) scale(440 330)">
+      <stop stop-color="#69B8FF" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#69B8FF" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#FFFFFF" fill-opacity="0.055"/>
+    </pattern>
+    <filter id="shadow" x="-60%" y="-60%" width="220%" height="220%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <filter id="softGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" rx="32" fill="url(#background)"/>
+  <rect width="1280" height="640" rx="32" fill="url(#glowPurple)"/>
+  <rect width="1280" height="640" rx="32" fill="url(#glowBlue)"/>
+  <rect x="1" y="1" width="1278" height="638" rx="31" fill="none" stroke="#FFFFFF" stroke-opacity="0.08"/>
+  <rect x="32" y="32" width="1216" height="576" rx="24" fill="url(#grid)"/>
+
+  <g transform="translate(80 70)">
+    <rect width="54" height="54" rx="16" fill="url(#accent)" filter="url(#shadow)"/>
+    <path d="M30.5 10.5 16.7 29.1h9.2l-2.7 14.4 14.1-20.2h-9.1l2.3-12.8Z" fill="#FFFFFF"/>
+    <text x="70" y="35" fill="#F0F1F5" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="25" font-weight="750" letter-spacing="-0.5">Veqri</text>
+  </g>
+
+  <g font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="80" y="205" fill="#A79BFF" font-size="16" font-weight="750" letter-spacing="3.4">LOCAL-FIRST AI ORCHESTRATOR</text>
+    <text x="74" y="310" fill="#F4F4F7" font-size="96" font-weight="780" letter-spacing="-5.5">Veqri</text>
+    <text x="80" y="354" fill="#B6BAC4" font-size="25" font-weight="520" letter-spacing="0.2">Voice Event Queue Relay Intelligence</text>
+    <text x="80" y="408" fill="#979CA9" font-size="19" font-weight="430">One private control plane for agents, voice, tools,</text>
+    <text x="80" y="438" fill="#979CA9" font-size="19" font-weight="430">and every screen you work from.</text>
+
+    <g transform="translate(80 494)">
+      <rect width="170" height="42" rx="21" fill="#111319" stroke="#343846"/>
+      <circle cx="22" cy="21" r="5" fill="#57D6A0"/>
+      <text x="37" y="27" fill="#D8DAE2" font-size="13" font-weight="700" letter-spacing="0.8">LOCAL BY DEFAULT</text>
+    </g>
+    <g transform="translate(262 494)">
+      <rect width="156" height="42" rx="21" fill="#111319" stroke="#343846"/>
+      <circle cx="22" cy="21" r="5" fill="#A79BFF"/>
+      <text x="37" y="27" fill="#D8DAE2" font-size="13" font-weight="700" letter-spacing="0.8">DURABLE TASKS</text>
+    </g>
+    <g transform="translate(430 494)">
+      <rect width="205" height="42" rx="21" fill="#111319" stroke="#343846"/>
+      <circle cx="22" cy="21" r="5" fill="#69B8FF"/>
+      <text x="37" y="27" fill="#D8DAE2" font-size="13" font-weight="700" letter-spacing="0.7">APPROVAL-GATED TOOLS</text>
+    </g>
+  </g>
+
+  <g transform="translate(718 106)" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <rect x="61" y="42" width="398" height="382" rx="32" fill="#111319" fill-opacity="0.72" stroke="#343846" filter="url(#shadow)"/>
+    <rect x="86" y="67" width="348" height="332" rx="24" fill="#0D0E12" stroke="#252832"/>
+
+    <path d="M121 147 C174 147 179 211 230 211 M121 319 C174 319 179 255 230 255 M389 147 C338 147 337 211 287 211 M389 319 C338 319 337 255 287 255" fill="none" stroke="#343846" stroke-width="2"/>
+    <path d="M140 233 H374" stroke="url(#signal)" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="152" cy="233" r="13" fill="#8C7CFF" fill-opacity="0.14" stroke="#8C7CFF"/>
+    <circle cx="210" cy="233" r="8" fill="#8C7CFF"/>
+    <circle cx="310" cy="233" r="8" fill="#69B8FF"/>
+    <circle cx="368" cy="233" r="13" fill="#69B8FF" fill-opacity="0.14" stroke="#69B8FF"/>
+
+    <circle cx="259" cy="233" r="69" fill="#8C7CFF" fill-opacity="0.08" filter="url(#softGlow)"/>
+    <circle cx="259" cy="233" r="58" fill="#161820" stroke="#8C7CFF" stroke-opacity="0.75" stroke-width="2"/>
+    <circle cx="259" cy="233" r="44" fill="url(#accent)"/>
+    <path d="M265 203 244 232h14l-4 25 21-32h-14l4-22Z" fill="#FFFFFF"/>
+    <text x="259" y="307" text-anchor="middle" fill="#F0F1F5" font-size="13" font-weight="800" letter-spacing="2.2">CORE</text>
+
+    <g>
+      <rect x="96" y="94" width="111" height="49" rx="12" fill="#161820" stroke="#343846"/>
+      <circle cx="116" cy="118.5" r="5" fill="#57D6A0"/>
+      <text x="130" y="123" fill="#D8DAE2" font-size="13" font-weight="650">Android</text>
+    </g>
+    <g>
+      <rect x="312" y="94" width="111" height="49" rx="12" fill="#161820" stroke="#343846"/>
+      <circle cx="332" cy="118.5" r="5" fill="#57D6A0"/>
+      <text x="346" y="123" fill="#D8DAE2" font-size="13" font-weight="650">Desktop</text>
+    </g>
+    <g>
+      <rect x="96" y="324" width="111" height="49" rx="12" fill="#161820" stroke="#343846"/>
+      <circle cx="116" cy="348.5" r="5" fill="#A79BFF"/>
+      <text x="130" y="353" fill="#D8DAE2" font-size="13" font-weight="650">Connectors</text>
+    </g>
+    <g>
+      <rect x="312" y="324" width="111" height="49" rx="12" fill="#161820" stroke="#343846"/>
+      <circle cx="332" cy="348.5" r="5" fill="#69B8FF"/>
+      <text x="346" y="353" fill="#D8DAE2" font-size="13" font-weight="650">CLI + tools</text>
+    </g>
+  </g>
+
+  <text x="1200" y="585" text-anchor="end" fill="#6C707D" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="650" letter-spacing="1.4">GO &#183; KOTLIN &#183; TYPESCRIPT</text>
+</svg>
