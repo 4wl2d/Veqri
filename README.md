@@ -1,154 +1,170 @@
-# Veqri
+<p align="center">
+  <img src="./docs/assets/veqri-cover.svg" width="100%" alt="Veqri: Voice Event Queue Relay Intelligence, a local-first AI orchestrator">
+</p>
 
-Veqri is a local-first personal AI orchestrator: a Go daemon and CLI, native Android client, desktop companion, durable agent/task runtime, approved PC tools, messaging connector boundaries, and a WebRTC-compatible voice control plane. It runs without a Veqri cloud account. External models, STT/TTS, push, TURN, and messaging credentials are optional adapters.
+<h1 align="center">Veqri</h1>
 
-This repository is an implementation, not only a design. The deterministic default exercises text delegation, parallel task graphs, persisted progress/results, Android pairing and streaming, single-use shell approvals, connector thread routing, simulated call/STT/TTS/barge-in, restart recovery, and desktop administration entirely on one machine.
+<p align="center">
+  <strong>Local-first personal AI orchestration for voice, tasks, tools, and every screen.</strong>
+</p>
+
+<p align="center">
+  One Go core. Native Android and desktop clients. Durable task graphs.<br>
+  Human-approved side effects. No Veqri cloud account required.
+</p>
+
+<p align="center">
+  <a href="https://github.com/4wl2d/Veqri/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/4wl2d/Veqri/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Go 1.26" src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white&style=flat-square">
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Android-7F52FF?logo=kotlin&logoColor=white&style=flat-square">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Desktop-3178C6?logo=typescript&logoColor=white&style=flat-square">
+  <img alt="Local first" src="https://img.shields.io/badge/architecture-local--first-57D6A0?style=flat-square">
+  <a href="./LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-A42E2B?style=flat-square"></a>
+</p>
+
+<p align="center">
+  <a href="#why-veqri">Why Veqri</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#operational-status">Status</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#development">Development</a> ·
+  <a href="#security">Security</a> ·
+  <a href="#documentation">Docs</a>
+</p>
+
+---
+
+## What is Veqri?
+
+Veqri is a **local-first personal AI orchestrator** built around a Go daemon and CLI, a native Android client, a React/Wails desktop companion, durable agents and task graphs, approval-gated PC tools, messaging connector boundaries, and a WebRTC-compatible voice control plane.
+
+The default system runs entirely on one machine. External models, STT/TTS, push, TURN, and messaging credentials are adapters, not prerequisites. SQLite on the PC remains authoritative while clients render state and submit authenticated intent.
+
+> [!IMPORTANT]
+> This repository contains a runnable MVP, not only a design. Its deterministic default exercises delegation, parallel task graphs, persistence, Android pairing, approvals, connector routing, simulated call/STT/TTS flows, restart recovery, and desktop administration without pretending optional production adapters are already complete.
+
+## Why Veqri
+
+| | |
+|---|---|
+| **Local by default**<br>Core binds to loopback, persists to a private SQLite WAL database, and does not require a Veqri account or hosted control plane. | **Durable by design**<br>Events, conversations, task graphs, progress, results, approvals, delivery targets, and audit facts survive process restarts. |
+| **Controlled side effects**<br>Typed tools pass through capability and risk policy. State-changing work can pause for an expiring, single-use approval. | **One system, several surfaces**<br>Use the CLI, Android app, React/Wails desktop app, signed webhooks, local events, or messaging connector boundaries. |
+| **Provider-optional**<br>Cloud models, speech providers, push, TURN, Slack, Mattermost, and Teams credentials can be added without changing the core domain. | **Honest boundaries**<br>Simulators are labelled, incomplete adapters fail closed, and limitations are documented next to operational capabilities. |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph surfaces[Clients and triggers]
+        Android[Android]
+        Desktop[Desktop]
+        CLI[CLI]
+        Connectors[Connectors]
+    end
+
+    Core["Veqri Core<br/>HTTP · WebSocket · policy"]
+    State[(SQLite WAL)]
+    Queue[Durable task graph]
+    Agents[Agent registry]
+    Tools[Approved tools]
+    Delivery[Progress and delivery]
+
+    Android <-->|authenticated commands and events| Core
+    Desktop <-->|authenticated commands and events| Core
+    CLI -->|loopback API| Core
+    Connectors -->|verified normalized ingress| Core
+    Core <--> State
+    Core --> Queue --> Agents --> Tools
+    Tools --> Delivery
+    Agents --> Delivery
+    Delivery --> Android
+    Delivery --> Desktop
+    Delivery --> Connectors
+
+    classDef client fill:#161820,stroke:#343846,color:#f0f1f5;
+    classDef core fill:#6653df,stroke:#a79bff,color:#ffffff;
+    classDef runtime fill:#111319,stroke:#8c7cff,color:#f0f1f5;
+    classDef data fill:#10201a,stroke:#57d6a0,color:#f0f1f5;
+    class Android,Desktop,CLI,Connectors client;
+    class Core core;
+    class Queue,Agents,Tools,Delivery runtime;
+    class State data;
+```
+
+Core is a local modular monolith. Provider-specific code normalizes data at the edge; domain packages do not depend on Android, React, Slack, Mattermost, Teams, or a model vendor. See [Architecture](docs/ARCHITECTURE.md) and the [ADRs](docs/adr/) for the decisions behind this shape.
 
 ## Operational status
 
-| Capability | Status in this checkout |
+| Area | Current state |
 |---|---|
-| Core HTTP/WebSocket APIs, SQLite WAL state, migrations, event dedupe, task workers, cancellation, recovery, audit | Operational |
-| Versioned Protobuf/gRPC contracts | Generated from one canonical schema; the running MVP edge is HTTP/WebSocket and a live gRPC listener remains an adapter gap |
-| Rolling SQLite content/audit retention | Operational; `VEQRI_RETENTION_DAYS=0` retains indefinitely, positive values sweep asynchronously at startup and every six hours |
-| Private storage maintenance and SQLite backup | Operational; private directories/files are permission-restricted, transient pairing/desktop results are cleaned on a fixed schedule, and backups are integrity-checked before atomic publication |
-| Deterministic general/planner/coding/research/automation agents and result synthesizer | Operational, explicitly simulated domain work |
-| Android pairing, authenticated command/event stream, conversation/tasks/approvals/call UI, Room/DataStore/Keystore | Operational |
-| Android acoustic WebRTC media | Interface and SDP/ICE boundary implemented; checked-in provider is a clearly labelled no-audio simulator |
-| Android answer playback and immediate barge-in without task cancellation | Operational through an installed offline Android `TextToSpeech` voice; Core mock TTS chunks remain a simulator |
-| Structured shell, filesystem, Git, and SSRF-hardened HTTP tools | Operational; shell is wired into the approval runtime, the others are typed policy-ready packages |
-| Desktop React companion and native Wails shell | Operational in browser/mock and live-core modes; host-native Linux, macOS ARM64/Intel, and Windows x64 build gates are checked in, while signed installers and optional tray hooks remain release work |
-| Slack | Verified HTTP Events ingress plus deterministic simulator; Socket Mode/live outbound requires credentials |
-| Mattermost | Verified compatibility ingress plus deterministic simulator; production bot WebSocket/outbound requires credentials |
-| Teams | Fail-closed Activity/JWT boundary plus deterministic simulator; live Bot Connector endpoint requires public HTTPS and credentials |
-| Generic signed webhooks and local CLI events | Operational |
-| Push wake, TURN, cloud AI/STT/TTS | Optional, not configured |
+| **Core and persistence** | Operational HTTP/WebSocket APIs, SQLite WAL state, migrations, retention, backups, event dedupe, workers, cancellation, recovery, and audit. |
+| **Tasks and agents** | Operational durable graphs, parallel execution, progress, synthesis, and recovery. Built-in domain work is intentionally deterministic and simulated. |
+| **Tools and approvals** | Structured shell execution is wired through policy and single-use approvals. Filesystem, Git, and SSRF-hardened HTTP tools are typed policy-ready packages. |
+| **Android** | Operational pairing, authenticated command/event stream, conversation, task, approval and call UI, Room cache, DataStore, and Keystore credential storage. |
+| **Voice** | Dialog state, call control, Android platform answer playback, and immediate barge-in are operational. The checked-in acoustic WebRTC provider is a clearly labelled no-audio simulator. |
+| **Desktop** | React companion and Wails shell work in mock and live-core modes. Native Linux, macOS ARM64/Intel, and Windows x64 build gates are checked in; signed installers and optional tray hooks remain release work. |
+| **Connectors** | Signed webhooks and local CLI events are operational. Slack, Mattermost, and Teams have verified ingress/fail-closed boundaries plus deterministic simulators; live outbound needs credentials and provider setup. |
+| **Protocol** | Versioned Protobuf/gRPC contracts are generated from one canonical schema. The running MVP edge is HTTP/WebSocket; a live gRPC listener remains an adapter gap. |
+| **Optional infrastructure** | Push wake, TURN, cloud AI, cloud STT/TTS, and live messaging credentials are not configured by default. |
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the ADRs for decisions; limitations are never presented as completed functionality.
+## Quick start
 
-## Repository layout
+### Build the native application
 
-```text
-apps/android/             Kotlin + Compose Android application
-apps/desktop/             React + TypeScript desktop companion frontend
-cmd/veqri-core/           local daemon entry point
-cmd/veqri-cli/            authenticated CLI entry point
-core/                     transport-independent domain/runtime packages
-connectors/               normalized messaging and local-event adapters
-agents/                   built-in and adapter agent implementations
-tools/                    structured PC tool implementations
-protocol/proto/veqri/v1/  canonical cross-platform contracts
-protocol/generated/       reproducible Go and Android Java Lite clients
-deploy/                   Docker, systemd, launchd, and Windows service assets
-docs/                     architecture, security, operations, and ADRs
-tests/                    deterministic integration and end-to-end scenarios
-```
-
-## Prerequisites
-
-- Go `1.26.5`.
-- Protobuf compiler `35.1` and `protoc-gen-go v1.36.11` / `protoc-gen-go-grpc v1.6.2` for regeneration.
-- Node `24.17.0` LTS recommended (the desktop build is also verified on Node `22.23.1`).
-- JDK 21 and Android SDK platform 37/build-tools 37 for Android. The Gradle 9.4.1 wrapper is checked in and checksum-verified.
-- Linux native desktop builds additionally need GTK 3 and WebKitGTK development packages. Ubuntu 24.04 uses `libgtk-3-dev` and `libwebkit2gtk-4.1-dev`.
-
-## One-command application builds
-
-Build the self-contained application for the current desktop OS from the repository root:
+You need **Go 1.26.5** and the native prerequisites for your host. From a fresh checkout:
 
 ```sh
+git clone https://github.com/4wl2d/Veqri.git
+cd Veqri
 go run ./cmd/veqri-build
 ```
 
-The output is one launchable artifact under `build/release`: `Veqri.app` on macOS, `veqri-desktop.exe` on Windows, or `veqri-desktop` on Linux. `build/release/buildinfo.json` records the exact identity embedded in the artifact. Ordinary local builds use `0.1.0-dev`; an official release build must opt in with `--release` and provide a strict SemVer, full commit, and RFC3339 build time. The desktop executable contains both the Wails UI and Core. On launch it starts its own managed Core process from the same executable, waits for readiness, proves child ownership with an ephemeral nonce, verifies credential compatibility, and injects the local credential. Closing the app stops that managed Core; an unexpected Core exit closes the owning UI instead of leaving it connected to a replaceable port. If another Core already owns the loopback origin, managed mode fails safely; set `VEQRI_DESKTOP_CORE_MODE=external` only when that existing process is explicitly trusted and managed elsewhere.
+The shared builder creates one launchable artifact under `build/release`:
 
-For a release-metadata build, use one identity for Core, CLI, and desktop:
+| Host | Output |
+|---|---|
+| macOS | `Veqri.app` |
+| Windows | `veqri-desktop.exe` |
+| Linux | `veqri-desktop` |
 
-```sh
-export VEQRI_VERSION=0.1.0-rc.1
-export VEQRI_COMMIT="$(git rev-parse HEAD)"
-export VEQRI_BUILD_TIME="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-go run ./cmd/veqri-build --release binaries
-go run ./cmd/veqri-build --release desktop
-```
+The desktop executable contains the Wails UI and a managed Core entry point. It starts Core, verifies child ownership and credential compatibility, and stops the managed process when the app closes.
 
-Build the Android client without exporting an SDK path manually:
+> [!NOTE]
+> Native desktop artifacts must be built on their target OS. Current CI builds Linux x64, macOS ARM64/Intel, and Windows x64 artifacts.
 
-```sh
-go run ./cmd/veqri-build android
-```
+### Run Core and the CLI
 
-This locates Android SDK Platform 37 in `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or the standard macOS/Linux/Windows SDK directory and writes `build/release/Veqri-android-debug.apk`. The APK uses the real Core transport and defaults to `http://10.0.2.2:7342` for an emulator. It is debug-signed and is not a store release.
-
-Build the standalone binaries plus both application artifacts available on the current host. The combined `all` target is development-only; Android release identity is outside this builder:
-
-```sh
-go run ./cmd/veqri-build all
-```
-
-Native desktop packages must be built on their target OS; the CI matrix produces Linux x64, macOS ARM64/Intel, and Windows x64 artifacts. One physical file cannot run across desktop and Android runtimes, so each platform receives its native format while sharing this build entry point.
-
-macOS setup used for this build:
-
-```sh
-brew install go protobuf
-protoc --version # must print: libprotoc 35.1
-go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
-cd /path/to/veqri/apps/desktop && npm ci
-cd /path/to/veqri/apps/android && ./gradlew --version
-```
-
-## Generate protocol code
-
-```sh
-make generate
-make check-generated
-```
-
-`make generate` refreshes the Go clients and invokes Android's `:protocol:regenerateAndroidProtocolBindings` task for the self-contained `device.proto` projection. The separate Java 17 module pins Protobuf Gradle plugin `0.10.0`, `protoc` `4.35.1`, and `protobuf-javalite` `4.35.1`. Generated Go code and the Android Java Lite mirror under `protocol/generated/android` are committed. `make check-generated` regenerates the Go clients with pinned tools and rejects tracked or untracked differences, then checks the Android mirror against fresh output by relative path and bytes. Regeneration must leave `git diff` clean.
-
-## Start Veqri Core
-
-The secure default binds only to `127.0.0.1:7342`. The first start stores the admin credential in the OS keychain (or a clearly reported `~/.veqri/admin.token` `0600` fallback on headless systems) and creates `~/.veqri/veqri.db`. On Unix, Core enforces `0700` on its data/artifact directories and `0600` on the SQLite database, fallback token, backups, and diagnostic exports.
-
-```sh
-go run ./cmd/veqri-core
-```
-
-For an isolated development instance:
-
-```sh
-export VEQRI_DATA_DIR="$PWD/.veqri-dev"
-export VEQRI_DATABASE="$VEQRI_DATA_DIR/veqri.db"
-export VEQRI_ADDR=127.0.0.1:7342
-go run ./cmd/veqri-core
-```
-
-A non-loopback bind is rejected unless both `VEQRI_TLS_CERT_FILE` and `VEQRI_TLS_KEY_FILE` are set. Copy `.env.example` as a reference; the daemon intentionally does not parse `.env` files implicitly.
-
-## Build and use the CLI
+Build the standalone binaries:
 
 ```sh
 go run ./cmd/veqri-build binaries
+```
+
+Start the secure loopback-only Core in one terminal:
+
+```sh
+./build/bin/veqri-core
+```
+
+Then use the CLI from another terminal:
+
+```sh
 ./build/bin/veqri version --json
 ./build/bin/veqri status
 ./build/bin/veqri ask --wait "Ask the coding agent to inspect the repository"
 ./build/bin/veqri task list
 ```
 
-The CLI reads `VEQRI_AUTH_TOKEN`, the OS keychain, or the `admin.token` fallback inside `VEQRI_DATA_DIR` / `~/.veqri`.
+On first start, Core creates `~/.veqri/veqri.db` and stores the admin credential in the OS keychain, with a clearly reported `0600` fallback on headless systems.
 
-Submit a local application event:
+## Choose a surface
 
-```sh
-printf '{"goal":"Review the completed build"}\n' > /tmp/veqri-event.json
-./build/bin/veqri emit build.completed --data /tmp/veqri-event.json --task
-```
+<details>
+<summary><strong>Desktop app</strong></summary>
 
-## Start the desktop UI
+### Browser development mode
 
-Mock mode is deterministic and needs no core:
+Mock mode is deterministic and does not need Core:
 
 ```sh
 cd apps/desktop
@@ -156,35 +172,28 @@ npm ci
 npm run dev
 ```
 
-Live mode:
+For live mode, copy `apps/desktop/.env.example` to `.env.local`, set `VITE_VEQRI_MODE=live`, point `VITE_VEQRI_CORE_URL` at `http://127.0.0.1:7342`, and use a disposable development token. Never ship an admin token inside browser assets.
 
-```sh
-cd apps/desktop
-cp .env.example .env.local
-# Set VITE_VEQRI_MODE=live, VITE_VEQRI_CORE_URL=http://127.0.0.1:7342,
-# and VITE_VEQRI_DEV_TOKEN to a disposable development token.
-npm run dev
-```
-
-Do not ship an admin token embedded in browser assets. A packaged Wails shell must inject it through the runtime bridge.
-
-Build the self-contained native application on the current Linux, macOS, or Windows host:
+### Native shell
 
 ```sh
 cd apps/desktop
 npm run native:build
 ```
 
-The low-level output is `build/bin/Veqri.app` on macOS, `build/bin/veqri-desktop` on Linux, and `build/bin/veqri-desktop.exe` on Windows. These files contain the managed Core entry point as well as the UI. Prefer `go run ./cmd/veqri-build` for the consistently named `build/release` artifact. The build uses the pinned Wails v2.12.0 CLI through a platform-neutral Node driver; it does not rely on POSIX shell utilities. See [docs/RELEASE.md](docs/RELEASE.md) for the support matrix and remaining signing/installer work.
+Prefer `go run ./cmd/veqri-build` from the repository root for consistently named `build/release` output. See [Release engineering](docs/RELEASE.md).
 
-## Build and pair Android
+</details>
+
+<details>
+<summary><strong>Android app</strong></summary>
+
+Build and install the debug client:
 
 ```sh
 go run ./cmd/veqri-build android
 adb install -r build/release/Veqri-android-debug.apk
 ```
-
-The lower-level equivalent is `cd apps/android && ./gradlew --no-daemon :app:assembleDebug -PveqriFakeTransport=false`.
 
 Create a five-minute, single-use pairing code on the PC:
 
@@ -192,11 +201,16 @@ Create a five-minute, single-use pairing code on the PC:
 ./build/bin/veqri pair
 ```
 
-On Android, enter the returned core URL and eight-digit code. The emulator reaches a host loopback core at `http://10.0.2.2:7342`; a physical device needs explicitly configured TLS/LAN access. The resulting credential is stored in Android Keystore and only its SHA-256 hash is stored by Core.
+Enter the returned Core URL and eight-digit code on Android. The emulator reaches the host at `http://10.0.2.2:7342`; a physical device needs explicitly configured TLS/LAN access. Android stores its credential in Keystore, while Core stores only its SHA-256 hash.
 
-## Shell approval vertical slice
+The APK uses the real Core transport but is debug-signed and is not a store release. Reliable wake while Android is stopped or sleeping requires an optional push adapter; a private LAN socket alone cannot guarantee it.
 
-Read-only structured commands from the local CLI can run under policy:
+</details>
+
+<details>
+<summary><strong>Approval-gated shell tools</strong></summary>
+
+Read-only structured commands can run under policy:
 
 ```sh
 ./build/bin/veqri shell --wait --cwd "$PWD" pwd
@@ -210,87 +224,147 @@ A state-changing command waits for a single-use approval:
 ./build/bin/veqri task show TASK_ID
 ```
 
-Use `veqri deny APPROVAL_ID` to verify that the command never executes. Shell interpreters (`sh -c`, `bash -c`, PowerShell command strings), privilege escalation, paths outside configured workspaces, secret-like environment injection, and automatic retries of state-changing work are denied.
+Use `veqri deny APPROVAL_ID` to verify that the command never executes. Shell interpreters, privilege escalation, paths outside configured workspaces, secret-like environment injection, and automatic retries of state-changing work are denied.
 
-## Run connector simulators
+</details>
 
-With Core running:
+<details>
+<summary><strong>Connectors and local events</strong></summary>
+
+Run every deterministic connector simulator with Core running:
 
 ```sh
 ./scripts/simulate-connectors.sh
 ```
 
-Or one adapter directly:
+Submit a local application event:
 
 ```sh
-TOKEN=${VEQRI_AUTH_TOKEN:-$(security find-generic-password -s ai.veqri -a admin-token -w 2>/dev/null || tr -d '\r\n' < "${VEQRI_DATA_DIR:-$HOME/.veqri}/admin.token")}
-curl --fail --silent --show-error \
-  -H "Authorization: Bearer $TOKEN" \
-  -H 'X-Veqri-Protocol-Version: 1' \
-  -H 'Content-Type: application/json' \
-  -d '{"text":"run the tests","channel_id":"C-local","thread_id":"T-local","message_id":"M-1"}' \
-  http://127.0.0.1:7342/v1/connectors/simulate/slack
+printf '{"goal":"Review the completed build"}\n' > /tmp/veqri-event.json
+./build/bin/veqri emit build.completed --data /tmp/veqri-event.json --task
 ```
 
-Progress and the final simulated reply retain the original channel/thread target and are idempotent across restart.
+Progress and the final simulated reply retain the original channel/thread target and remain idempotent across restart. See [Connectors](docs/CONNECTORS.md) for provider-specific authentication and live deployment boundaries.
 
-## Tests and checks
+</details>
 
-All Go tests, including integration/E2E and security cases:
+## Development
+
+### Repository layout
+
+```text
+apps/android/             Kotlin + Compose Android application
+apps/desktop/             React + TypeScript desktop companion
+cmd/veqri-core/           local daemon entry point
+cmd/veqri-cli/            authenticated CLI entry point
+core/                     transport-independent domain/runtime packages
+connectors/               messaging and local-event adapters
+agents/                   built-in and adapter agent implementations
+tools/                    structured PC tool implementations
+protocol/proto/veqri/v1/  canonical cross-platform contracts
+protocol/generated/       reproducible Go and Android Java Lite clients
+deploy/                   Docker, systemd, launchd, and Windows assets
+docs/                     architecture, security, operations, and ADRs
+tests/                    deterministic integration and E2E scenarios
+```
+
+### Prerequisites
+
+| Tooling | Version / use |
+|---|---|
+| Go | `1.26.5` |
+| Protobuf | compiler `35.1`, `protoc-gen-go v1.36.11`, `protoc-gen-go-grpc v1.6.2` for regeneration |
+| Node | `24.17.0` LTS recommended; desktop also verified on `22.23.1` |
+| Android | JDK 21, SDK platform 37, build-tools 37; checksum-verified Gradle 9.4.1 wrapper is included |
+| Linux desktop | GTK 3 and WebKitGTK development packages; Ubuntu 24.04 uses `libgtk-3-dev` and `libwebkit2gtk-4.1-dev` |
+
+### Build targets
 
 ```sh
+go run ./cmd/veqri-build binaries  # Core and CLI
+go run ./cmd/veqri-build desktop   # native app for this host
+go run ./cmd/veqri-build android   # debug APK
+go run ./cmd/veqri-build all       # development-only combined target
+```
+
+Official release builds must opt in with `--release` and provide strict SemVer, a full commit hash, and an RFC3339 build time. `build/release/buildinfo.json` records the embedded identity. Android release identity is intentionally outside the combined builder.
+
+### Generate protocol code
+
+```sh
+make generate
+make check-generated
+```
+
+Generated Go clients and the Android Java Lite mirror are committed. `make check-generated` recreates them with pinned tools and rejects tracked or untracked drift.
+
+### Tests and checks
+
+```sh
+# Go, integration, E2E, race, and security cases
 go test -race ./...
 go vet ./...
-```
 
-Desktop:
-
-```sh
+# Desktop
 cd apps/desktop
 npm ci
 npm run typecheck
 npm test -- --run
 npm run build
-```
 
-Android:
-
-```sh
-cd apps/android
+# Android
+cd ../android
 ./gradlew --no-daemon :protocol:checkAndroidProtocolBindings testDebugUnitTest lintDebug assembleDebug
 ./gradlew --no-daemon assembleRelease assembleDebugAndroidTest
 ```
 
-Connected instrumentation requires an attached emulator/device:
+Run the routinely available suite from the root with `make test`. After installing native desktop prerequisites, use `make release-check` for release binaries and the packaged-runtime smoke test.
 
-```sh
-cd apps/android
-./gradlew --no-daemon connectedDebugAndroidTest
-```
+### Deployment
 
-One command for the routinely available checks:
+Veqri includes templates for:
 
-```sh
-make test
-```
+- Linux user service: `deploy/systemd/veqri-core.service`
+- macOS LaunchAgent: `deploy/launchd/ai.veqri.core.plist`
+- Windows service bootstrap: `deploy/windows/install-service.ps1`
+- Container image: `docker build -f deploy/docker/Dockerfile -t veqri-core .`
 
-After installing native desktop prerequisites, build the release binaries and run the packaged-runtime smoke:
-
-```sh
-make release-check
-```
-
-## Background service and deployment
-
-- Linux user service: `deploy/systemd/veqri-core.service`.
-- macOS launch agent template: `deploy/launchd/ai.veqri.core.plist` (replace placeholders with absolute paths).
-- Windows service bootstrap: `deploy/windows/install-service.ps1` (requires a service-logon-capable dedicated non-administrator credential, verifies effective/nested local-Administrators membership, and fails closed before ACL or service changes).
-- Container build: `docker build -f deploy/docker/Dockerfile -t veqri-core .`.
-
-The systemd and launchd templates use a dedicated tool workspace rather than inheriting an arbitrary current directory. The tray UI is intentionally a separate companion; orchestration never runs inside it. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Read [Deployment](docs/DEPLOYMENT.md) before running Core as a background service or exposing it beyond loopback.
 
 ## Security
 
-Veqri treats connector messages, model output, web content, files, and command output as untrusted data. A capability policy mediates tools; risky commands display exact structured arguments and wait for an expiring approval. The daemon has an emergency stop and agent/connector kill switches. Secrets are never persisted in configuration JSON or logs.
+Veqri treats connector messages, model output, web content, files, and command output as untrusted data.
 
-Read [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) before enabling LAN, remote agents, native app control, or live connectors. Report security problems privately rather than opening a public issue with credentials or logs.
+- Core binds to `127.0.0.1:7342` by default.
+- A non-loopback bind is rejected unless both `VEQRI_TLS_CERT_FILE` and `VEQRI_TLS_KEY_FILE` are set.
+- Capability policy mediates tools; risky commands show exact structured arguments and wait for an expiring approval.
+- Emergency stop and per-agent/per-connector kill switches are enforced in Core.
+- Secrets are referenced through keychain locators and are not persisted in configuration JSON or logs.
+- Rolling content and audit retention is configurable with `VEQRI_RETENTION_DAYS`; `0` retains indefinitely.
+
+Read [Security operations](docs/SECURITY.md) and the [Threat model](docs/THREAT_MODEL.md) before enabling LAN access, remote agents, native app control, or live connectors. Do not open a public issue containing credentials, tokens, private conversations, or unredacted logs.
+
+## Documentation
+
+| Topic | Document |
+|---|---|
+| System design and durable processing | [Architecture](docs/ARCHITECTURE.md) |
+| Local development | [Development](docs/DEVELOPMENT.md) |
+| Android client and pairing | [Android](docs/ANDROID.md) |
+| Voice boundaries and WebRTC adapter | [Voice](docs/VOICE.md) |
+| Messaging and event adapters | [Connectors](docs/CONNECTORS.md) |
+| Tools, policy, and approvals | [Tools](docs/TOOLS.md) |
+| Protocol contracts | [Protocol](docs/PROTOCOL.md) |
+| Security defaults and operations | [Security](docs/SECURITY.md) |
+| Deployment and service templates | [Deployment](docs/DEPLOYMENT.md) |
+| Release identity and platform matrix | [Release](docs/RELEASE.md) |
+| Failure diagnosis | [Troubleshooting](docs/TROUBLESHOOTING.md) |
+| Architectural decisions | [ADRs](docs/adr/) |
+
+## Contributing
+
+Focused, tested contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), keep generated protocol output reproducible, and update the relevant security or architecture documentation when a trust boundary changes.
+
+## License
+
+Veqri is licensed under the [GNU Affero General Public License v3.0](LICENSE). The project name and marks are covered by [TRADEMARKS.md](TRADEMARKS.md).
